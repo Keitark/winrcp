@@ -1,0 +1,856 @@
+<Window x:Class="RcpPlayer.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        mc:Ignorable="d"
+        Title="RCP Player (SC-88Pro Style)"
+        Icon="Assets/winrcp.ico"
+        Width="756"
+        Height="700"
+        MinWidth="600"
+        MinHeight="465"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Loaded="WindowLoaded"
+        Closing="WindowClosing"
+        Background="#D8CCAA"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0"
+                            CornerRadius="12"
+                            GlassFrameThickness="0"
+                            ResizeBorderThickness="6"
+                            UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="Sc88RoundButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="21"/>
+            <Setter Property="Height" Value="21"/>
+            <Setter Property="FontFamily" Value="Bahnschrift SemiBold"/>
+            <Setter Property="FontSize" Value="8"/>
+            <Setter Property="Foreground" Value="#2F1E0C"/>
+            <Setter Property="Background" Value="#F2CB78"/>
+            <Setter Property="BorderBrush" Value="#C58B35"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Circle"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="11">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Circle" Property="Background" Value="#FFD98E"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Circle" Property="Background" Value="#E5B45A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Circle" Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AmberCommandButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#C19145"/>
+            <Setter Property="BorderBrush" Value="#8A5C21"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#1F160B"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.92"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.84"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AmberProgressBarStyle" TargetType="ProgressBar">
+            <Setter Property="Foreground" Value="#C88F2A"/>
+            <Setter Property="Background" Value="#3D2A12"/>
+            <Setter Property="BorderBrush" Value="#A3722B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border CornerRadius="4"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <Grid x:Name="PART_Track" ClipToBounds="True">
+                                <Rectangle x:Name="PART_Indicator"
+                                           Margin="1"
+                                           RadiusX="3"
+                                           RadiusY="3"
+                                           HorizontalAlignment="Left"
+                                           Fill="{TemplateBinding Foreground}"/>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="UmberScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="Background" Value="#9C6D34"/>
+            <Setter Property="BorderBrush" Value="#6A4B26"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="UmberScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Background" Value="#D8BE8E"/>
+            <Setter Property="Foreground" Value="#9C6D34"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <Track x:Name="PART_Track"
+                                   Orientation="{TemplateBinding Orientation}"
+                                   Minimum="{TemplateBinding Minimum}"
+                                   Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value}"
+                                   ViewportSize="{TemplateBinding ViewportSize}">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Opacity="0"
+                                                  IsHitTestVisible="False"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource UmberScrollThumbStyle}"
+                                           Background="{TemplateBinding Foreground}"/>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Opacity="0"
+                                                  IsHitTestVisible="False"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Height" Value="8"/>
+                                <Setter Property="Width" Value="Auto"/>
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                                <Setter TargetName="PART_Track" Property="LayoutTransform">
+                                    <Setter.Value>
+                                        <TransformGroup/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="Orientation" Value="Vertical">
+                                <Setter Property="Width" Value="8"/>
+                                <Setter Property="Height" Value="Auto"/>
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="True"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="UmberTabItemStyle" TargetType="TabItem">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#4A3318"/>
+            <Setter Property="Background" Value="#DCC8A3"/>
+            <Setter Property="BorderBrush" Value="#8C7047"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="11,10"/>
+            <Setter Property="Margin" Value="0,0,3,0"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="TabBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6,6,0,0"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"
+                                                  ContentSource="Header"/>
+                            </Border>
+                            <Border x:Name="TabRightEdge"
+                                    Width="1"
+                                    Margin="0,1,0,1"
+                                    HorizontalAlignment="Right"
+                                    Background="{TemplateBinding BorderBrush}"
+                                    Panel.ZIndex="1"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#B8945A"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#6E522D"/>
+                                <Setter TargetName="TabRightEdge" Property="Background" Value="#6E522D"/>
+                                <Setter Property="Foreground" Value="#211509"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#CDB184"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="UmberTabControlStyle" TargetType="TabControl">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local"
+                              SnapsToDevicePixels="True">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TabPanel Grid.Row="0"
+                                      IsItemsHost="True"
+                                      Margin="0,0,0,4"
+                                      KeyboardNavigation.TabIndex="1"
+                                      Background="Transparent"/>
+                            <ContentPresenter Grid.Row="1"
+                                              Margin="0"
+                                              ContentSource="SelectedContent"
+                                              KeyboardNavigation.TabIndex="2"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="0">
+            <Border CornerRadius="12"
+                    ClipToBounds="True"
+                    BorderThickness="0"
+                    BorderBrush="Transparent">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#D8CCAA" Offset="0"/>
+                        <GradientStop Color="#C4AF7F" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid Margin="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="42"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0"
+                        Margin="0,0,0,9"
+                        CornerRadius="12,12,0,0"
+                        Background="#1E1812"
+                        MouseLeftButtonDown="TopDragRegionMouseLeftButtonDown">
+                    <Grid Margin="11,8,9,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontFamily="Bahnschrift SemiBold"
+                                   FontSize="14"
+                                   Foreground="#CFA367"
+                                   Text="winrcp"/>
+
+                        <Button Grid.Column="1"
+                                Width="27"
+                                Height="23"
+                                Margin="0,0,5,0"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                FontWeight="Bold"
+                                Foreground="#F0E4CF"
+                                Background="#3A2C1C"
+                                BorderBrush="#6E5435"
+                                Content="_"
+                                Click="MinimizeWindowClick"/>
+
+                        <Button Grid.Column="2"
+                                Width="27"
+                                Height="23"
+                                FontFamily="Consolas"
+                                FontSize="11"
+                                FontWeight="Bold"
+                                Foreground="#F6EFE6"
+                                Background="#7E2B23"
+                                BorderBrush="#A04D44"
+                                Content="X"
+                                Click="CloseWindowClick"/>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1" Margin="11,0,11,9">
+                    <Border Padding="9"
+                            CornerRadius="8"
+                            BorderBrush="#3B352A"
+                            BorderThickness="2"
+                            Background="#17140F">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="75"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="PERFORMANCE MONITOR"
+                                       Grid.ColumnSpan="2"
+                                       FontFamily="Bahnschrift SemiBold"
+                                       FontSize="12"
+                                       Foreground="#D7CB9E"/>
+
+                            <Border Grid.Row="1"
+                                    Grid.Column="0"
+                                    Margin="0,6,0,0"
+                                    Padding="8"
+                                    CornerRadius="5"
+                                    BorderBrush="#8D6A3A"
+                                    BorderThickness="1">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#B89F66" Offset="0"/>
+                                        <GradientStop Color="#A2854F" Offset="0.55"/>
+                                        <GradientStop Color="#876C40" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Margin="0,0,6,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock x:Name="LcdLine1Text"
+                                                   FontFamily="Bahnschrift SemiBold"
+                                                   FontSize="20"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2D210F"
+                                                   TextTrimming="CharacterEllipsis"/>
+
+                                        <Grid Grid.Row="1" Margin="0,5,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="LcdSummaryLeftText"
+                                                       FontFamily="Consolas"
+                                                       FontSize="18"
+                                                       FontWeight="Bold"
+                                                       Foreground="#2E2111"
+                                                       Text="RCP ---  ---/--"/>
+                                            <TextBlock x:Name="LcdSummaryRightText"
+                                                       Grid.Column="1"
+                                                       Margin="12,0,0,0"
+                                                       FontFamily="Consolas"
+                                                       FontSize="18"
+                                                       FontWeight="Bold"
+                                                       Foreground="#2E2111"
+                                                       Text="TEMPO ---  TB ---"/>
+                                        </Grid>
+
+                                        <TextBlock x:Name="LcdLine2Text"
+                                                   Grid.Row="2"
+                                                   Margin="0,5,0,0"
+                                                   FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2A1E10"
+                                                   Text=""/>
+
+                                        <Grid Grid.Row="3" Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Grid Margin="0,0,11,0">
+                                                <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="87"/>
+                                                <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <TextBlock Grid.Row="0" Text="PART" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdPartValueText" Grid.Column="1" Grid.Row="0" Text="ALL" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="1" Margin="0,3,0,0" Text="LEVEL" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdLevelValueText" Grid.Column="1" Grid.Row="1" Margin="0,3,0,0" Text="100" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" Text="REVERB" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdReverbValueText" Grid.Column="1" Grid.Row="2" Margin="0,3,0,0" Text="40" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="3" Margin="0,3,0,0" Text="K SHIFT" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdKeyShiftValueText" Grid.Column="1" Grid.Row="3" Margin="0,3,0,0" Text="+0" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                            </Grid>
+
+                                            <Grid Grid.Column="1" Margin="11,0,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="99"/>
+                                                <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <TextBlock Grid.Row="0" Text="INSTRUMENT" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdInstrumentValueText" Grid.Column="1" Grid.Row="0" Text="===" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="1" Margin="0,3,0,0" Text="PAN" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdPanValueText" Grid.Column="1" Grid.Row="1" Margin="0,3,0,0" Text="64" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" Text="CHORUS" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdChorusValueText" Grid.Column="1" Grid.Row="2" Margin="0,3,0,0" Text="00" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="3" Margin="0,3,0,0" Text="DELAY" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdDelayValueText" Grid.Column="1" Grid.Row="3" Margin="0,3,0,0" Text="00" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                            </Grid>
+                                        </Grid>
+
+                                        <TextBlock x:Name="LcdEventText"
+                                                   Visibility="Collapsed"
+                                                   Text="CH-- NOTE --- VEL ---"/>
+                                    </Grid>
+
+                                    <Grid Grid.Column="1" Margin="0,0,1,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock x:Name="LcdInstrumentNameText"
+                                                   Text="-SOUND Canvas-"
+                                                   HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="17"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2E2111"/>
+
+                                        <Border Grid.Row="1"
+                                                Width="282"
+                                                Height="151"
+                                                Margin="0,3,0,0"
+                                                CornerRadius="3"
+                                                BorderBrush="#7D5F36"
+                                                BorderThickness="1"
+                                                Background="#9E8553"
+                                                SnapsToDevicePixels="True"
+                                                HorizontalAlignment="Right">
+                                            <Canvas x:Name="LcdMatrixGrid"
+                                                    Margin="0"
+                                                    UseLayoutRounding="True"
+                                                    SnapsToDevicePixels="True"/>
+                                        </Border>
+
+                                        <UniformGrid Grid.Row="2"
+                                                     Columns="16"
+                                                     Margin="0,4,0,0">
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="1"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="2"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="3"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="4"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="5"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="6"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="7"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="8"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="9"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="10"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="11"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="12"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="13"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="14"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="15"/>
+                                            <TextBlock FontFamily="Consolas" FontSize="8" Foreground="#3A2B17" TextAlignment="Center" Text="16"/>
+                                        </UniformGrid>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="1"
+                                  Grid.Column="1"
+                                  Margin="5,30,0,0"
+                                  Height="143"
+                                  VerticalAlignment="Top">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="39"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           FontFamily="Bahnschrift SemiBold"
+                                           FontSize="11"
+                                           Foreground="#F3D08C"
+                                           Text="ALL"/>
+                                <Button x:Name="AllModeButton"
+                                        Grid.Row="0"
+                                        Grid.Column="1"
+                                        Style="{StaticResource Sc88RoundButtonStyle}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Click="AllModeClick"/>
+
+                                <TextBlock Grid.Row="1"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           FontFamily="Bahnschrift SemiBold"
+                                           FontSize="11"
+                                           Foreground="#F3D08C"
+                                           Text="MUTE"/>
+                                <Button x:Name="MuteButton"
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Style="{StaticResource Sc88RoundButtonStyle}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Click="MuteClick"/>
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           FontFamily="Consolas"
+                                           FontSize="15"
+                                           Foreground="#F3D08C"
+                                           Text=">"
+                                           RenderTransformOrigin="0.5,0.5">
+                                    <TextBlock.RenderTransform>
+                                        <RotateTransform Angle="-90"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                                <Button x:Name="PartNextButton"
+                                        Grid.Row="2"
+                                        Grid.Column="1"
+                                        Style="{StaticResource Sc88RoundButtonStyle}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Click="PartNextClick"/>
+
+                                <TextBlock Grid.Row="3"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           FontFamily="Consolas"
+                                           FontSize="15"
+                                           Foreground="#F3D08C"
+                                           Text=">"
+                                           RenderTransformOrigin="0.5,0.5">
+                                    <TextBlock.RenderTransform>
+                                        <RotateTransform Angle="90"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                                <Button x:Name="PartPrevButton"
+                                        Grid.Row="3"
+                                        Grid.Column="1"
+                                        Style="{StaticResource Sc88RoundButtonStyle}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Click="PartPrevClick"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="2"
+                        Margin="11,0,11,9"
+                        Padding="9"
+                        CornerRadius="6"
+                        BorderBrush="#87785C"
+                        BorderThickness="1"
+                        Background="#E7DEC6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0"
+                              Height="23"
+                              VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="MIDI Endpoint"
+                                       Margin="0,0,8,0"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Consolas"
+                                       FontWeight="Bold"
+                                       FontSize="11"/>
+                            <ComboBox x:Name="EndpointCombo"
+                                      Grid.Column="1"
+                                      Width="162"
+                                      Height="23"
+                                      VerticalAlignment="Center"
+                                      VerticalContentAlignment="Center"
+                                      FontFamily="Consolas"
+                                      FontSize="10"
+                                      Background="#D8BE8E"
+                                      Foreground="#2A1C0C"
+                                      BorderBrush="#8A6230"
+                                      DisplayMemberPath="Name"
+                                      SelectionChanged="EndpointComboSelectionChanged">
+                                <ComboBox.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#D8BE8E"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#D8BE8E"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#B9822F"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#1F160B"/>
+                                    <Style TargetType="ComboBoxItem">
+                                        <Setter Property="Background" Value="#D8BE8E"/>
+                                        <Setter Property="Foreground" Value="#2A1C0C"/>
+                                        <Setter Property="FontFamily" Value="Consolas"/>
+                                        <Setter Property="Padding" Value="5,2"/>
+                                    </Style>
+                                </ComboBox.Resources>
+                            </ComboBox>
+                        </Grid>
+
+                        <Border x:Name="LoadedFileViewport"
+                                Grid.Column="1"
+                                Height="23"
+                                VerticalAlignment="Center"
+                                ClipToBounds="True"
+                                Background="Transparent">
+                            <Canvas Height="23"
+                                    VerticalAlignment="Center"
+                                    ClipToBounds="True">
+                                <TextBlock x:Name="LoadedFileText"
+                                           Canvas.Left="0"
+                                           Canvas.Top="4"
+                                           FontFamily="Consolas"
+                                           FontWeight="Bold"
+                                           FontSize="11"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="None"
+                                           Text="No file selected"/>
+                            </Canvas>
+                        </Border>
+
+                        <Button Grid.Column="2"
+                                Margin="9,0,0,0"
+                                Width="68"
+                                Height="24"
+                                FontFamily="Bahnschrift SemiBold"
+                                Style="{StaticResource AmberCommandButtonStyle}"
+                                Content="Open"
+                                Click="OpenFileClick"/>
+                        <Button x:Name="PlayButton"
+                                Grid.Column="3"
+                                Margin="8,0,0,0"
+                                Width="68"
+                                Height="24"
+                                FontFamily="Bahnschrift SemiBold"
+                                Style="{StaticResource AmberCommandButtonStyle}"
+                                Background="#B9822F"
+                                BorderBrush="#8A5C21"
+                                Foreground="#1F160B"
+                                Content="Play"
+                                Click="PlayClick"/>
+                        <Button x:Name="StopButton"
+                                Grid.Column="4"
+                                Margin="8,0,0,0"
+                                Width="68"
+                                Height="24"
+                                FontFamily="Bahnschrift SemiBold"
+                                Style="{StaticResource AmberCommandButtonStyle}"
+                                Background="#7E2929"
+                                Foreground="White"
+                                Content="Stop"
+                                IsEnabled="False"
+                                Click="StopClick"/>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="3" Margin="11,0,11,0">
+                    <Border Padding="6"
+                            CornerRadius="6"
+                            BorderBrush="#7E735E"
+                            BorderThickness="1"
+                            Background="#EFE6CF">
+                        <TabControl x:Name="MainTabs"
+                                    Style="{StaticResource UmberTabControlStyle}"
+                                    FontFamily="Consolas"
+                                    FontSize="10"
+                                    FontWeight="Bold"
+                                    ItemContainerStyle="{StaticResource UmberTabItemStyle}"
+                                    BorderThickness="0"
+                                    Background="#EFE6CF">
+                            <TabItem Header="Piano Roll">
+                                <Grid Margin="6">
+                                    <ScrollViewer x:Name="PianoRollScroll"
+                                                  Margin="0"
+                                                  HorizontalScrollBarVisibility="Auto"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  Background="#FCF8ED">
+                                        <ScrollViewer.Resources>
+                                            <sys:Double x:Key="{x:Static SystemParameters.HorizontalScrollBarHeightKey}">8</sys:Double>
+                                            <sys:Double x:Key="{x:Static SystemParameters.VerticalScrollBarWidthKey}">8</sys:Double>
+                                            <Style TargetType="ScrollBar" BasedOn="{StaticResource UmberScrollBarStyle}"/>
+                                        </ScrollViewer.Resources>
+                                        <Canvas x:Name="PianoRollCanvas"
+                                                Width="900"
+                                                Height="390"
+                                                Background="#F7F1DF"
+                                                SnapsToDevicePixels="True">
+                                            <Canvas.CacheMode>
+                                                <BitmapCache RenderAtScale="1"/>
+                                            </Canvas.CacheMode>
+                                        </Canvas>
+                                    </ScrollViewer>
+                                    <Canvas x:Name="PianoRollOverlayCanvas"
+                                            IsHitTestVisible="False"
+                                            ClipToBounds="True"
+                                            Panel.ZIndex="10">
+                                        <Rectangle x:Name="PianoRollOverlayPlayhead"
+                                                   Width="2"
+                                                   Fill="#A62121"
+                                                   SnapsToDevicePixels="True"
+                                                   Visibility="Collapsed"/>
+                                    </Canvas>
+                                </Grid>
+                            </TabItem>
+                            <TabItem Header="Track List">
+                                <Grid Margin="6">
+                                    <ListBox x:Name="TrackList"
+                                             Margin="0"
+                                             FontFamily="Consolas"
+                                             FontSize="10"/>
+                                </Grid>
+                            </TabItem>
+                            <TabItem Header="Realtime Display Log">
+                                <Grid Margin="6">
+                                    <ListBox x:Name="EventLogList"
+                                             Margin="0"
+                                             FontFamily="Consolas"
+                                             FontSize="9"
+                                             SelectionMode="Extended"
+                                             PreviewKeyDown="EventLogListPreviewKeyDown"
+                                             VirtualizingPanel.IsVirtualizing="True"
+                                             VirtualizingPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Copy Selected"
+                                                          Click="CopySelectedLogClick"/>
+                                                <MenuItem Header="Copy All Logs"
+                                                          Click="CopyAllLogsClick"/>
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                    </ListBox>
+                                </Grid>
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="4"
+                        Margin="11,9,11,11"
+                        Padding="8"
+                        CornerRadius="6"
+                        BorderBrush="#3C4A39"
+                        BorderThickness="1"
+                        Background="#0D150E">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar x:Name="PlayProgress"
+                                     Height="14"
+                                     Maximum="100"
+                                     Style="{StaticResource AmberProgressBarStyle}"
+                                     VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StatusText"
+                                   Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="10"
+                                   Foreground="#D6AD72"
+                                   Text="Ready"/>
+                    </Grid>
+                </Border>
+                </Grid>
+            </Border>
+    </Grid>
+</Window>

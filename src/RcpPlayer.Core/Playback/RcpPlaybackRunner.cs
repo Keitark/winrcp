@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime;
 using System.Threading;
+using RcpPlayer.Core.Model;
 
 namespace RcpPlayer.Core.Playback;
 
@@ -42,6 +43,20 @@ public sealed class RcpPlaybackRunner
         Func<ScheduledMidiEvent, bool>? shouldSendEvent,
         Action<PlaybackRunDiagnostics>? onRunDiagnostics)
     {
+        if (plan.SourceSong is { } sourceSong)
+        {
+            RunRealtimePlaybackLoop(
+                sourceSong,
+                plan,
+                output,
+                cancellationToken,
+                progress,
+                onEventDispatched,
+                shouldSendEvent,
+                onRunDiagnostics);
+            return;
+        }
+
         var events = plan.MidiEvents;
         var timeline = new TempoTimeline(plan.InitialTempoBpm, plan.TempoEvents, plan.TimeBase);
         var totalTicks = events[^1].Tick;
@@ -127,6 +142,124 @@ public sealed class RcpPlaybackRunner
                 }
 
                 diagnostics.MaxEventsPerTick = Math.Max(diagnostics.MaxEventsPerTick, tickEventCount);
+            }
+        }
+        finally
+        {
+            try
+            {
+                SendAllNotesOffBlocking(output, CancellationToken.None);
+            }
+            catch (Exception)
+            {
+            }
+
+            progress?.Report(1.0);
+            onRunDiagnostics?.Invoke(diagnostics);
+            try
+            {
+                thread.Priority = originalPriority;
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    private static void RunRealtimePlaybackLoop(
+        RcpSong song,
+        RcpPlaybackPlan plan,
+        IMidiOutput output,
+        CancellationToken cancellationToken,
+        IProgress<double>? progress,
+        Action<ScheduledMidiEvent>? onEventDispatched,
+        Func<ScheduledMidiEvent, bool>? shouldSendEvent,
+        Action<PlaybackRunDiagnostics>? onRunDiagnostics)
+    {
+        var sequencer = new RcpRealtimeSequencer(song);
+        var timeline = new TempoTimeline(plan.InitialTempoBpm, plan.TempoEvents, plan.TimeBase);
+        var diagnostics = new PlaybackRunDiagnostics();
+        var knownTotalTicks = plan.MidiEvents.Count > 0 ? plan.MidiEvents[^1].Tick : 0L;
+
+        using var timerResolution = HighResolutionTimerScope.Create(1);
+        using var gcLatency = GcLatencyScope.TryEnterLowLatency();
+        using var mmcss = MmcssScope.TryEnterProAudio();
+
+        var thread = Thread.CurrentThread;
+        var originalPriority = thread.Priority;
+        try
+        {
+            thread.Priority = ThreadPriority.Highest;
+        }
+        catch (Exception)
+        {
+        }
+
+        var startTimestamp = Stopwatch.GetTimestamp();
+
+        try
+        {
+            while (sequencer.TryDequeueNextTickEvents(out var tick, out var tickEvents))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var dueTimestamp = startTimestamp + timeline.TickToStopwatchTicks(tick);
+                var dispatchTimestamp = dueTimestamp - MillisecondsToStopwatchTicks(DispatchLeadTimeMs);
+                if (dispatchTimestamp < startTimestamp)
+                {
+                    dispatchTimestamp = startTimestamp;
+                }
+
+                WaitUntilDue(dispatchTimestamp, cancellationToken);
+
+                var now = Stopwatch.GetTimestamp();
+                var latenessTicks = Math.Max(0L, now - dueTimestamp);
+                var latenessMs = StopwatchTicksToMilliseconds(latenessTicks);
+                diagnostics.MaxEventsPerTick = Math.Max(diagnostics.MaxEventsPerTick, tickEvents.Count);
+
+                foreach (var e in tickEvents)
+                {
+                    diagnostics.TotalEvents++;
+
+                    var shouldSend = shouldSendEvent?.Invoke(e) ?? true;
+                    if (shouldSend && e.Packet.Kind == MidiMessageKind.Short)
+                    {
+                        var sendMs = SendShortBlocking(output, e.Packet.ShortMessage, cancellationToken);
+                        RecordSendTiming(diagnostics, sendMs);
+                        diagnostics.ShortEventsSent++;
+                    }
+                    else if (shouldSend && e.Packet.SysExData is { Length: > 0 } sysEx)
+                    {
+                        var sendMs = SendSysExBlocking(output, sysEx, cancellationToken);
+                        RecordSendTiming(diagnostics, sendMs);
+                        diagnostics.SysExEventsSent++;
+                    }
+                    else if (!shouldSend)
+                    {
+                        diagnostics.FilteredEvents++;
+                    }
+
+                    if (latenessMs > 2.0)
+                    {
+                        diagnostics.LateEventsOver2Ms++;
+                    }
+                    if (latenessMs > 5.0)
+                    {
+                        diagnostics.LateEventsOver5Ms++;
+                    }
+                    if (latenessMs > 10.0)
+                    {
+                        diagnostics.LateEventsOver10Ms++;
+                    }
+                    diagnostics.MaxLateByMs = Math.Max(diagnostics.MaxLateByMs, latenessMs);
+
+                    onEventDispatched?.Invoke(e);
+                }
+
+                if (knownTotalTicks > 0)
+                {
+                    progress?.Report(Math.Clamp(tick / (double)knownTotalTicks, 0.0, 0.999));
+                }
             }
         }
         finally

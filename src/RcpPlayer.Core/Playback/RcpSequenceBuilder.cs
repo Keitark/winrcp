@@ -15,6 +15,7 @@ public sealed class RcpPlaybackPlan
     public required double InitialTempoBpm { get; init; }
     public required IReadOnlyList<TempoEvent> TempoEvents { get; init; }
     public required IReadOnlyList<ScheduledMidiEvent> MidiEvents { get; init; }
+    public RcpSong? SourceSong { get; init; }
     public required RcpBuildDiagnostics BuildDiagnostics { get; init; }
 }
 
@@ -72,6 +73,7 @@ public sealed class RcpSequenceBuilder
             InitialTempoBpm = Math.Max(song.TempoBpm, 1),
             TempoEvents = orderedTempo,
             MidiEvents = orderedMidi,
+            SourceSong = song,
             BuildDiagnostics = new RcpBuildDiagnostics
             {
                 UnsupportedCommands = unsupportedStats,

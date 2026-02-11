@@ -127,6 +127,7 @@ public sealed class StandardMidiParser
             InitialTempoBpm = initialTempo,
             TempoEvents = orderedTempo,
             MidiEvents = orderedMidi,
+            SourceSong = null,
             BuildDiagnostics = new RcpBuildDiagnostics
             {
                 UnsupportedCommands = [],

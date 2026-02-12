@@ -113,19 +113,20 @@ internal sealed class RcpRealtimeSequencer
         private readonly RcpSong _song;
         private readonly IReadOnlyList<RcpEvent> _events;
         private readonly IReadOnlyList<int> _measureStartIndices;
-        private readonly long _completionTickFallback;
         private readonly Stack<LoopFrame> _loops = new();
         private readonly Stack<int> _repeatMeasureReturnIps = new();
         private readonly Dictionary<(int Channel, int Note), ActiveNoteState> _activeNotes = new();
         private readonly PriorityQueue<PendingNoteOff, (long Tick, long Sequence)> _pendingNoteOffs = new();
         private readonly PriorityQueue<ScheduledMidiEvent, (long Tick, long Sequence)> _readyEvents = new();
         private readonly PriorityQueue<SequencedTempoModifier, (long Tick, long Sequence)> _readyTempoModifiers = new();
+        private readonly HashSet<long> _seenLoopStateKeys = new();
 
         private long _nextSequence;
         private long _tick;
         private int _ip;
         private int _channel;
         private bool _ended;
+        private bool _hasEmittedMusicalNote;
 
         private int _rolandDev = 0x10;
         private int _rolandModel = 0x16;
@@ -145,7 +146,6 @@ internal sealed class RcpRealtimeSequencer
             _channel = ClampChannel(track.DefaultChannel);
             IsActive = isActive;
             HasPlayedOnce = !IsActive;
-            _completionTickFallback = CalculateCompletionTickFallback(_events);
         }
 
         public bool IsActive { get; }
@@ -245,7 +245,6 @@ internal sealed class RcpRealtimeSequencer
                     ProcessCurrentEvent();
                 }
 
-                ApplyFallbackCompletionIfNeeded();
                 FlushPendingNoteOffsAtTick(frameTick);
             }
         }
@@ -528,6 +527,7 @@ internal sealed class RcpRealtimeSequencer
                     {
                         MarkPlayedOnce();
                         _loops.Push(top);
+                        TryMarkCycleCompletionOnBackwardJump(top.StartIndex);
                         _ip = top.StartIndex;
                         break;
                     }
@@ -537,6 +537,7 @@ internal sealed class RcpRealtimeSequencer
                     {
                         top = top with { Iteration = top.Iteration + 1 };
                         _loops.Push(top);
+                        TryMarkCycleCompletionOnBackwardJump(top.StartIndex);
                         _ip = top.StartIndex;
                     }
                     else
@@ -564,6 +565,7 @@ internal sealed class RcpRealtimeSequencer
                             _repeatMeasureReturnIps.Count < 64)
                         {
                             _repeatMeasureReturnIps.Push(_ip + 1);
+                            TryMarkCycleCompletionOnBackwardJump(destination);
                             _ip = destination;
                             break;
                         }
@@ -604,38 +606,61 @@ internal sealed class RcpRealtimeSequencer
             }
         }
 
-        private void ApplyFallbackCompletionIfNeeded()
+        private void TryMarkCycleCompletionOnBackwardJump(int destinationIp)
         {
-            if (!IsActive || HasPlayedOnce || _completionTickFallback <= 0)
+            if (!IsActive || HasPlayedOnce || !_hasEmittedMusicalNote)
             {
                 return;
             }
 
-            if (_tick >= _completionTickFallback)
+            if (destinationIp >= _ip)
+            {
+                return;
+            }
+
+            if (_activeNotes.Count > 0 || _pendingNoteOffs.Count > 0)
+            {
+                return;
+            }
+
+            var key = BuildLoopStateKey(destinationIp);
+            if (_seenLoopStateKeys.Contains(key))
             {
                 MarkPlayedOnce();
+                return;
             }
+
+            _seenLoopStateKeys.Add(key);
         }
 
-        private static long CalculateCompletionTickFallback(IReadOnlyList<RcpEvent> events)
+        private long BuildLoopStateKey(int destinationIp)
         {
-            long linearTicks = 0;
-            foreach (var e in events)
+            var hash = new HashCode();
+            hash.Add(destinationIp);
+            hash.Add(_channel);
+            hash.Add(_rolandDev);
+            hash.Add(_rolandModel);
+            hash.Add(_rolandBaseH);
+            hash.Add(_rolandBaseM);
+            hash.Add(_yamahaDev);
+            hash.Add(_yamahaModel);
+            hash.Add(_yamahaBaseH);
+            hash.Add(_yamahaBaseM);
+
+            hash.Add(_loops.Count);
+            foreach (var item in _loops)
             {
-                linearTicks += Math.Max(e.DelayTicks, 0);
-                if (e.CommandOrNote == 0xFE)
-                {
-                    break;
-                }
+                hash.Add(item.StartIndex);
+                hash.Add(item.Iteration);
             }
 
-            if (linearTicks <= 0)
+            hash.Add(_repeatMeasureReturnIps.Count);
+            foreach (var item in _repeatMeasureReturnIps)
             {
-                return 0;
+                hash.Add(item);
             }
 
-            // Allow enough headroom for normal finite loops, but cap pathological expansions.
-            return linearTicks * 16;
+            return hash.ToHashCode();
         }
 
         private void EmitNoteEvent(RcpEvent e)
@@ -647,6 +672,7 @@ internal sealed class RcpRealtimeSequencer
             {
                 return;
             }
+            _hasEmittedMusicalNote = true;
 
             var key = (_channel, (int)note);
             var offTick = _tick + gate;

@@ -555,7 +555,7 @@ internal sealed class RcpRealtimeSequencer
                 case 0xFC:
                 {
                     var measureId = GetRepeatMeasureId(e);
-                    if (measureId > 0 && measureId < _measureStartIndices.Count)
+                    if (measureId >= 0 && measureId < _measureStartIndices.Count)
                     {
                         var destination = _measureStartIndices[measureId];
                         if (destination >= 0 &&

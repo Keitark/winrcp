@@ -221,7 +221,7 @@ public sealed class RcpSequenceBuilderTests
     }
 
     [Fact]
-    public void Build_SameMeasureCommand_FcTargetZero_DoesNotJump()
+    public void Build_SameMeasureCommand_Fc_RepeatsTargetMeasure()
     {
         var song = CreateSong(
         [
@@ -246,7 +246,7 @@ public sealed class RcpSequenceBuilderTests
             .ToList();
 
         Assert.Equal([0L], noteOnTicks);
-        Assert.Equal([1L], noteOffTicks);
+        Assert.Equal([2L], noteOffTicks);
         Assert.DoesNotContain(plan.BuildDiagnostics.UnsupportedCommands, c => c.Command == 0xFC);
     }
 

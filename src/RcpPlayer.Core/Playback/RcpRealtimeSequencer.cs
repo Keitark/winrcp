@@ -2,6 +2,8 @@ using RcpPlayer.Core.Model;
 
 namespace RcpPlayer.Core.Playback;
 
+internal readonly record struct SequencedTempoModifier(long Tick, int Ratio, int Gradation);
+
 internal sealed class RcpRealtimeSequencer
 {
     private readonly List<TrackRuntimeState> _tracks;
@@ -16,7 +18,10 @@ internal sealed class RcpRealtimeSequencer
             .ToList();
     }
 
-    public bool TryDequeueNextTickEvents(out long tick, out IReadOnlyList<ScheduledMidiEvent> events)
+    public bool TryDequeueNextTick(
+        out long tick,
+        out IReadOnlyList<ScheduledMidiEvent> midiEvents,
+        out IReadOnlyList<SequencedTempoModifier> tempoModifiers)
     {
         while (true)
         {
@@ -40,25 +45,55 @@ internal sealed class RcpRealtimeSequencer
             if (!found)
             {
                 tick = 0;
-                events = [];
+                midiEvents = [];
+                tempoModifiers = [];
                 return false;
             }
 
-            var batch = new List<ScheduledMidiEvent>(64);
+            var midiBatch = new List<ScheduledMidiEvent>(64);
+            var tempoBatch = new List<SequencedTempoModifier>(8);
             foreach (var track in _tracks)
             {
-                track.DequeueEventsAtTick(nextTick, batch);
+                track.DequeueAtTick(nextTick, midiBatch, tempoBatch);
             }
 
-            if (batch.Count == 0)
+            if (midiBatch.Count == 0 && tempoBatch.Count == 0)
             {
                 continue;
             }
 
             tick = nextTick;
-            events = batch;
+            midiEvents = midiBatch;
+            tempoModifiers = tempoBatch;
             return true;
         }
+    }
+
+    public bool TryDequeueNextTickEvents(out long tick, out IReadOnlyList<ScheduledMidiEvent> events)
+    {
+        var ok = TryDequeueNextTick(out tick, out var midiEvents, out _);
+        events = midiEvents;
+        return ok;
+    }
+
+    public bool AllActiveTracksPlayedOnce()
+    {
+        var hasActive = false;
+        foreach (var track in _tracks)
+        {
+            if (!track.IsActive)
+            {
+                continue;
+            }
+
+            hasActive = true;
+            if (!track.HasPlayedOnce)
+            {
+                return false;
+            }
+        }
+
+        return hasActive;
     }
 
     private sealed class TrackRuntimeState
@@ -67,7 +102,6 @@ internal sealed class RcpRealtimeSequencer
         private const int MaxInterpreterStepsPerSameTickFrame = 20_000;
 
         private readonly RcpSong _song;
-        private readonly RcpTrack _track;
         private readonly IReadOnlyList<RcpEvent> _events;
         private readonly IReadOnlyList<int> _measureStartIndices;
         private readonly Stack<LoopFrame> _loops = new();
@@ -75,6 +109,7 @@ internal sealed class RcpRealtimeSequencer
         private readonly Dictionary<(int Channel, int Note), ActiveNoteState> _activeNotes = new();
         private readonly PriorityQueue<PendingNoteOff, (long Tick, long Sequence)> _pendingNoteOffs = new();
         private readonly PriorityQueue<ScheduledMidiEvent, (long Tick, long Sequence)> _readyEvents = new();
+        private readonly PriorityQueue<SequencedTempoModifier, (long Tick, long Sequence)> _readyTempoModifiers = new();
 
         private long _nextSequence;
         private long _tick;
@@ -95,52 +130,78 @@ internal sealed class RcpRealtimeSequencer
         public TrackRuntimeState(RcpSong song, RcpTrack track)
         {
             _song = song;
-            _track = track;
             _events = track.Events;
             _measureStartIndices = BuildMeasureStartIndices(_events);
             _channel = ClampChannel(track.DefaultChannel);
+            IsActive = _events.Count > 0;
+            HasPlayedOnce = !IsActive;
         }
+
+        public bool IsActive { get; }
+
+        public bool HasPlayedOnce { get; private set; }
 
         public long? PeekNextTick()
         {
             EnsureReadyEvents();
-            if (_readyEvents.TryPeek(out _, out var priority))
+            var hasMidi = _readyEvents.TryPeek(out _, out var midiPriority);
+            var hasTempo = _readyTempoModifiers.TryPeek(out _, out var tempoPriority);
+
+            if (hasMidi && hasTempo)
             {
-                return priority.Tick;
+                return Math.Min(midiPriority.Tick, tempoPriority.Tick);
+            }
+
+            if (hasMidi)
+            {
+                return midiPriority.Tick;
+            }
+
+            if (hasTempo)
+            {
+                return tempoPriority.Tick;
             }
 
             return null;
         }
 
-        public void DequeueEventsAtTick(long tick, List<ScheduledMidiEvent> sink)
+        public void DequeueAtTick(long tick, List<ScheduledMidiEvent> midiSink, List<SequencedTempoModifier> tempoSink)
         {
             EnsureReadyEvents();
+
             while (_readyEvents.TryPeek(out var e, out var priority) && priority.Tick == tick)
             {
                 _readyEvents.Dequeue();
-                sink.Add(e);
+                midiSink.Add(e);
+            }
+
+            while (_readyTempoModifiers.TryPeek(out var t, out var priority) && priority.Tick == tick)
+            {
+                _readyTempoModifiers.Dequeue();
+                tempoSink.Add(t);
             }
         }
 
         private void EnsureReadyEvents()
         {
-            if (_readyEvents.Count > 0 || _ended)
+            if ((_readyEvents.Count > 0 || _readyTempoModifiers.Count > 0) || _ended)
             {
                 return;
             }
 
             var safetySteps = 0;
-            while (_readyEvents.Count == 0 && !_ended)
+            while (_readyEvents.Count == 0 && _readyTempoModifiers.Count == 0 && !_ended)
             {
                 safetySteps++;
                 if (safetySteps > MaxInterpreterStepsPerPump)
                 {
+                    MarkPlayedOnce();
                     _ended = true;
                     break;
                 }
 
                 FlushPendingNoteOffsBeforeCurrentTick();
-                if (_readyEvents.Count > 0)
+                if (_readyEvents.Count > 0 || _readyTempoModifiers.Count > 0)
                 {
                     break;
                 }
@@ -153,6 +214,7 @@ internal sealed class RcpRealtimeSequencer
                         continue;
                     }
 
+                    MarkPlayedOnce();
                     _ended = true;
                     break;
                 }
@@ -164,6 +226,7 @@ internal sealed class RcpRealtimeSequencer
                     frameSteps++;
                     if (frameSteps > MaxInterpreterStepsPerSameTickFrame)
                     {
+                        MarkPlayedOnce();
                         _ended = true;
                         break;
                     }
@@ -295,7 +358,7 @@ internal sealed class RcpRealtimeSequencer
                     _ip++;
                     break;
                 case 0xE7:
-                    // Tempo modifier command is kept on track timeline; global tempo map is applied by runner.
+                    EnqueueTempoModifier(_tick, Math.Max(1, e.Param1), Clamp8Bit(e.Param2));
                     _tick += Math.Max(e.DelayTicks, 0);
                     _ip++;
                     break;
@@ -451,6 +514,7 @@ internal sealed class RcpRealtimeSequencer
                     var top = _loops.Pop();
                     if (e.DelayTicks <= 0)
                     {
+                        MarkPlayedOnce();
                         _loops.Push(top);
                         _ip = top.StartIndex;
                         break;
@@ -506,6 +570,7 @@ internal sealed class RcpRealtimeSequencer
                     _ip++;
                     break;
                 case 0xFE:
+                    MarkPlayedOnce();
                     _ip = _events.Count;
                     break;
                 default:
@@ -516,6 +581,14 @@ internal sealed class RcpRealtimeSequencer
 
                     _ip++;
                     break;
+            }
+        }
+
+        private void MarkPlayedOnce()
+        {
+            if (IsActive)
+            {
+                HasPlayedOnce = true;
             }
         }
 
@@ -601,6 +674,11 @@ internal sealed class RcpRealtimeSequencer
             {
                 _activeNotes.Remove(key);
             }
+        }
+
+        private void EnqueueTempoModifier(long tick, int ratio, int gradation)
+        {
+            _readyTempoModifiers.Enqueue(new SequencedTempoModifier(tick, ratio, gradation), (tick, _nextSequence++));
         }
 
         private void EnqueueReadyShort(long tick, int status, int data1, int data2)
@@ -773,6 +851,11 @@ internal sealed class RcpRealtimeSequencer
     private static int Clamp7Bit(int value)
     {
         return Math.Clamp(value, 0, 127);
+    }
+
+    private static int Clamp8Bit(int value)
+    {
+        return Math.Clamp(value, 0, 255);
     }
 
     private static int ClampChannel(int channel)

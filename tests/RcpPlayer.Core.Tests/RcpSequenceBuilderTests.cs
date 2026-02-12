@@ -75,6 +75,75 @@ public sealed class RcpSequenceBuilderTests
     }
 
     [Fact]
+    public void Build_InfiniteLoopTrack_StopsAfterAllActiveTracksPlayedOnce()
+    {
+        var song = new RcpSong
+        {
+            Format = RcpFormat.RcpV2,
+            Title = "test",
+            Comment = string.Empty,
+            TimeBase = 48,
+            TempoBpm = 120,
+            BeatNumerator = 4,
+            BeatDenominator = 4,
+            Cm6FileName = null,
+            GsdAFileName = null,
+            GsdBFileName = null,
+            UserExclusives = [],
+            Tracks =
+            [
+                new RcpTrack
+                {
+                    TrackId = 1,
+                    Name = "inf",
+                    DefaultChannel = 0,
+                    IsMuted = false,
+                    Events =
+                    [
+                        new RcpEvent { Index = 0, CommandOrNote = 0xF9, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 1, CommandOrNote = 60, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 2, CommandOrNote = 61, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 3, CommandOrNote = 0xF8, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 4, CommandOrNote = 0xFE, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 }
+                    ]
+                },
+                new RcpTrack
+                {
+                    TrackId = 2,
+                    Name = "finite",
+                    DefaultChannel = 1,
+                    IsMuted = false,
+                    Events =
+                    [
+                        new RcpEvent { Index = 0, CommandOrNote = 0xF9, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 1, CommandOrNote = 64, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 2, CommandOrNote = 0xF8, DelayTicks = 2, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 3, CommandOrNote = 67, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 4, CommandOrNote = 0xFE, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 }
+                    ]
+                }
+            ]
+        };
+
+        var builder = new RcpSequenceBuilder();
+        var plan = builder.Build(song);
+
+        var noteOns = plan.MidiEvents
+            .Where(e => e.Packet.Kind == MidiMessageKind.Short && (((byte)e.Packet.ShortMessage) & 0xF0) == 0x90)
+            .ToList();
+
+        var infTrackNote60Count = noteOns.Count(e =>
+            ((e.Packet.ShortMessage >> 8) & 0x7F) == 60 &&
+            (((byte)e.Packet.ShortMessage) & 0x0F) == 0);
+
+        Assert.True(infTrackNote60Count >= 2, "Infinite-loop track should continue until all active tracks are played once.");
+        Assert.Contains(noteOns, e =>
+            ((e.Packet.ShortMessage >> 8) & 0x7F) == 67 &&
+            (((byte)e.Packet.ShortMessage) & 0x0F) == 1);
+        Assert.True(plan.MidiEvents.Max(e => e.Tick) <= 6, "Offline rendering should stop once all active tracks completed first pass.");
+    }
+
+    [Fact]
     public void Build_BankProgramLsbCommand_E1_EmitsCc32AndProgram()
     {
         var song = CreateSong(

@@ -39,6 +39,11 @@ public sealed class RcpSequenceBuilder
         ArgumentNullException.ThrowIfNull(song);
         options ??= new RcpSequenceBuilderOptions();
 
+        if (HasInfiniteLoopTrack(song, options.IgnoreMutedTracks))
+        {
+            return BuildWithTrackCompletion(song, options);
+        }
+
         var tempoModifiers = new List<TempoModifierCommand>();
         var midiEvents = new List<ScheduledMidiEvent>();
         var unsupportedCommands = new Dictionary<byte, CommandAccumulator>();
@@ -73,12 +78,84 @@ public sealed class RcpSequenceBuilder
             InitialTempoBpm = Math.Max(song.TempoBpm, 1),
             TempoEvents = orderedTempo,
             MidiEvents = orderedMidi,
-            SourceSong = song,
+            SourceSong = null,
             BuildDiagnostics = new RcpBuildDiagnostics
             {
                 UnsupportedCommands = unsupportedStats,
                 LoopExpansionLimitTracks = loopExpansionLimitTracks.OrderBy(t => t).ToList()
             }
+        };
+    }
+
+    private static bool HasInfiniteLoopTrack(RcpSong song, bool ignoreMutedTracks)
+    {
+        foreach (var track in song.Tracks)
+        {
+            if (ignoreMutedTracks && track.IsMuted)
+            {
+                continue;
+            }
+
+            if (track.Events.Any(e => e.CommandOrNote == 0xF8 && e.DelayTicks == 0))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static RcpPlaybackPlan BuildWithTrackCompletion(RcpSong song, RcpSequenceBuilderOptions options)
+    {
+        var sequencer = new RcpRealtimeSequencer(song, options.IgnoreMutedTracks);
+        var midiEvents = new List<ScheduledMidiEvent>(65_536);
+        var tempoModifiers = new List<TempoModifierCommand>(256);
+        var diagnostics = new RcpBuildDiagnostics
+        {
+            UnsupportedCommands = [],
+            LoopExpansionLimitTracks = []
+        };
+
+        var guardSteps = 0;
+        var guardLimit = Math.Max(options.MaxExpandedEventsPerTrack, 50_000) * Math.Max(song.Tracks.Count, 1);
+        while (sequencer.TryDequeueNextTick(out _, out var tickEvents, out var tickTempoModifiers))
+        {
+            guardSteps++;
+            if (guardSteps > guardLimit)
+            {
+                break;
+            }
+
+            if (tickEvents.Count > 0)
+            {
+                midiEvents.AddRange(tickEvents);
+            }
+
+            if (tickTempoModifiers.Count > 0)
+            {
+                foreach (var item in tickTempoModifiers)
+                {
+                    tempoModifiers.Add(new TempoModifierCommand(item.Tick, item.Ratio, item.Gradation));
+                }
+            }
+
+            if (sequencer.AllActiveTracksPlayedOnce())
+            {
+                break;
+            }
+        }
+
+        var orderedTempo = ResolveTempoEvents(song, tempoModifiers);
+        var orderedMidi = MidiEventOrdering.OrderByTimeline(midiEvents);
+
+        return new RcpPlaybackPlan
+        {
+            TimeBase = Math.Max(song.TimeBase, 1),
+            InitialTempoBpm = Math.Max(song.TempoBpm, 1),
+            TempoEvents = orderedTempo,
+            MidiEvents = orderedMidi,
+            SourceSong = null,
+            BuildDiagnostics = diagnostics
         };
     }
 

@@ -144,6 +144,61 @@ public sealed class RcpSequenceBuilderTests
     }
 
     [Fact]
+    public void Build_ControlOnlyInfiniteTrack_DoesNotBlockCompletion()
+    {
+        var song = new RcpSong
+        {
+            Format = RcpFormat.RcpV2,
+            Title = "test",
+            Comment = string.Empty,
+            TimeBase = 48,
+            TempoBpm = 120,
+            BeatNumerator = 4,
+            BeatDenominator = 4,
+            Cm6FileName = null,
+            GsdAFileName = null,
+            GsdBFileName = null,
+            UserExclusives = [],
+            Tracks =
+            [
+                new RcpTrack
+                {
+                    TrackId = 1,
+                    Name = "note",
+                    DefaultChannel = 0,
+                    IsMuted = false,
+                    Events =
+                    [
+                        new RcpEvent { Index = 0, CommandOrNote = 60, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 1, CommandOrNote = 62, DelayTicks = 1, Param1 = 1, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 2, CommandOrNote = 0xFE, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 }
+                    ]
+                },
+                new RcpTrack
+                {
+                    TrackId = 2,
+                    Name = "ctrl-inf",
+                    DefaultChannel = 1,
+                    IsMuted = false,
+                    Events =
+                    [
+                        new RcpEvent { Index = 0, CommandOrNote = 0xF9, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 1, CommandOrNote = 0xEB, DelayTicks = 0, Param1 = 7, Param2 = 100, RawLength = 4 },
+                        new RcpEvent { Index = 2, CommandOrNote = 0xF8, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 },
+                        new RcpEvent { Index = 3, CommandOrNote = 0xFE, DelayTicks = 0, Param1 = 0, Param2 = 0, RawLength = 4 }
+                    ]
+                }
+            ]
+        };
+
+        var builder = new RcpSequenceBuilder();
+        var plan = builder.Build(song);
+
+        Assert.NotEmpty(plan.MidiEvents);
+        Assert.True(plan.MidiEvents.Max(e => e.Tick) <= 3, "Control-only infinite track should not keep offline renderer running.");
+    }
+
+    [Fact]
     public void Build_BankProgramLsbCommand_E1_EmitsCc32AndProgram()
     {
         var song = CreateSong(
@@ -166,7 +221,7 @@ public sealed class RcpSequenceBuilderTests
     }
 
     [Fact]
-    public void Build_SameMeasureCommand_Fc_RepeatsTargetMeasure()
+    public void Build_SameMeasureCommand_FcTargetZero_DoesNotJump()
     {
         var song = CreateSong(
         [
@@ -191,7 +246,7 @@ public sealed class RcpSequenceBuilderTests
             .ToList();
 
         Assert.Equal([0L], noteOnTicks);
-        Assert.Equal([2L], noteOffTicks);
+        Assert.Equal([1L], noteOffTicks);
         Assert.DoesNotContain(plan.BuildDiagnostics.UnsupportedCommands, c => c.Command == 0xFC);
     }
 

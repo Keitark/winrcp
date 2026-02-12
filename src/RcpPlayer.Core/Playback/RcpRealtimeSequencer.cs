@@ -11,10 +11,14 @@ internal sealed class RcpRealtimeSequencer
     public RcpRealtimeSequencer(RcpSong song, bool ignoreMutedTracks = true)
     {
         ArgumentNullException.ThrowIfNull(song);
-        _tracks = song.Tracks
+        var targetTracks = song.Tracks
             .Where(t => !ignoreMutedTracks || !t.IsMuted)
             .OrderBy(t => t.TrackId)
-            .Select(t => new TrackRuntimeState(song, t))
+            .ToList();
+
+        var hasMusicalTrack = targetTracks.Any(HasMusicalEvents);
+        _tracks = targetTracks
+            .Select(t => new TrackRuntimeState(song, t, hasMusicalTrack ? HasMusicalEvents(t) : t.Events.Count > 0))
             .ToList();
     }
 
@@ -96,6 +100,11 @@ internal sealed class RcpRealtimeSequencer
         return hasActive;
     }
 
+    private static bool HasMusicalEvents(RcpTrack track)
+    {
+        return track.Events.Any(e => e.CommandOrNote < 0x80 && e.Param1 > 0);
+    }
+
     private sealed class TrackRuntimeState
     {
         private const int MaxInterpreterStepsPerPump = 200_000;
@@ -104,6 +113,7 @@ internal sealed class RcpRealtimeSequencer
         private readonly RcpSong _song;
         private readonly IReadOnlyList<RcpEvent> _events;
         private readonly IReadOnlyList<int> _measureStartIndices;
+        private readonly long _completionTickFallback;
         private readonly Stack<LoopFrame> _loops = new();
         private readonly Stack<int> _repeatMeasureReturnIps = new();
         private readonly Dictionary<(int Channel, int Note), ActiveNoteState> _activeNotes = new();
@@ -127,14 +137,15 @@ internal sealed class RcpRealtimeSequencer
         private int _yamahaBaseH;
         private int _yamahaBaseM;
 
-        public TrackRuntimeState(RcpSong song, RcpTrack track)
+        public TrackRuntimeState(RcpSong song, RcpTrack track, bool isActive)
         {
             _song = song;
             _events = track.Events;
             _measureStartIndices = BuildMeasureStartIndices(_events);
             _channel = ClampChannel(track.DefaultChannel);
-            IsActive = _events.Count > 0;
+            IsActive = isActive;
             HasPlayedOnce = !IsActive;
+            _completionTickFallback = CalculateCompletionTickFallback(_events);
         }
 
         public bool IsActive { get; }
@@ -234,6 +245,7 @@ internal sealed class RcpRealtimeSequencer
                     ProcessCurrentEvent();
                 }
 
+                ApplyFallbackCompletionIfNeeded();
                 FlushPendingNoteOffsAtTick(frameTick);
             }
         }
@@ -543,7 +555,7 @@ internal sealed class RcpRealtimeSequencer
                 case 0xFC:
                 {
                     var measureId = GetRepeatMeasureId(e);
-                    if (measureId >= 0 && measureId < _measureStartIndices.Count)
+                    if (measureId > 0 && measureId < _measureStartIndices.Count)
                     {
                         var destination = _measureStartIndices[measureId];
                         if (destination >= 0 &&
@@ -590,6 +602,40 @@ internal sealed class RcpRealtimeSequencer
             {
                 HasPlayedOnce = true;
             }
+        }
+
+        private void ApplyFallbackCompletionIfNeeded()
+        {
+            if (!IsActive || HasPlayedOnce || _completionTickFallback <= 0)
+            {
+                return;
+            }
+
+            if (_tick >= _completionTickFallback)
+            {
+                MarkPlayedOnce();
+            }
+        }
+
+        private static long CalculateCompletionTickFallback(IReadOnlyList<RcpEvent> events)
+        {
+            long linearTicks = 0;
+            foreach (var e in events)
+            {
+                linearTicks += Math.Max(e.DelayTicks, 0);
+                if (e.CommandOrNote == 0xFE)
+                {
+                    break;
+                }
+            }
+
+            if (linearTicks <= 0)
+            {
+                return 0;
+            }
+
+            // Allow enough headroom for normal finite loops, but cap pathological expansions.
+            return linearTicks * 16;
         }
 
         private void EmitNoteEvent(RcpEvent e)

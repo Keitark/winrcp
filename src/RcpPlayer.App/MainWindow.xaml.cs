@@ -2453,9 +2453,8 @@ public partial class MainWindow : Window
 
         var elapsedMs = _playbackUiStopwatch.Elapsed.TotalMilliseconds;
         var tickFromTime = GetTickAtMilliseconds(elapsedMs);
-        var resolvedTick = _isPianoRollHardwareScrollEnabled
-            ? tickFromTime
-            : Math.Max(tickFromTime, Interlocked.Read(ref _playbackHintTick));
+        var playbackHintTick = Interlocked.Read(ref _playbackHintTick);
+        var resolvedTick = Math.Max(tickFromTime, playbackHintTick);
         return Math.Clamp(resolvedTick / _playbackTotalTicksForUi, 0.0, 1.0);
     }
 

@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     private const double LcdCommentScrollStepPerChar = 0.25;
     private const double LcdCommentGapPerChar = 0.3;
     private const double CompactMinWindowHeight = 250.0;
+    private const double CompactShellBottomInset = 8.0;
     private const double ShellSlideOffset = 26.0;
     private static readonly TimeSpan LcdTitleScrollStartDelay = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan LcdTitleScrollStepInterval = TimeSpan.FromMilliseconds(220);
@@ -935,10 +936,20 @@ public partial class MainWindow : Window
         }
 
         BeginAnimation(HeightProperty, null);
-        var heightAnim = new DoubleAnimation(targetHeight, ShellAnimationDuration)
+        var startHeight = ActualHeight > 0 ? ActualHeight : Height;
+        Height = startHeight;
+        if (Math.Abs(startHeight - targetHeight) < 0.5)
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+            Height = targetHeight;
+            return;
+        }
+
+        var heightAnim = new DoubleAnimation(startHeight, targetHeight, ShellAnimationDuration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+            FillBehavior = FillBehavior.Stop
         };
+        heightAnim.Completed += (_, _) => Height = targetHeight;
         BeginAnimation(HeightProperty, heightAnim);
     }
 
@@ -949,7 +960,7 @@ public partial class MainWindow : Window
             ? (FrameworkElement)ProgressPanel
             : PerformanceMonitorSection;
         var bottom = anchor.TranslatePoint(new Point(0, anchor.ActualHeight), this).Y;
-        return Math.Max(CompactMinWindowHeight, Math.Ceiling(bottom + 24.0));
+        return Math.Max(CompactMinWindowHeight, Math.Ceiling(bottom + CompactShellBottomInset));
     }
 
     private static T? FindAncestor<T>(DependencyObject? origin) where T : DependencyObject

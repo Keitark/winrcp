@@ -915,7 +915,7 @@
                                 Background="#B9822F"
                                 BorderBrush="#8A5C21"
                                 Foreground="#1F160B"
-                                Content=">"
+                                Content="▶"
                                 Click="PlayClick"/>
                         <Button x:Name="StopButton"
                                 Grid.Column="4"
@@ -928,7 +928,7 @@
                                 Background="#A8752D"
                                 BorderBrush="#7A5320"
                                 Foreground="#1F160B"
-                                Content="[]"
+                                Content="■"
                                 IsEnabled="False"
                                 Click="StopClick"/>
                     </Grid>

@@ -134,6 +134,7 @@ public partial class MainWindow : Window
     private long _playbackTotalTicksForUi;
     private double _playbackUiLastElapsedMs;
     private long _playbackHintTick;
+    private long _playbackHintStopwatchTicks;
     private readonly List<PlaybackTempoSegment> _playbackTempoSegments = [];
     private int _logScrollSkipCounter;
     private string? _summaryFormatLabelOverride;
@@ -1037,7 +1038,7 @@ public partial class MainWindow : Window
 
     private void OnEventDispatched(ScheduledMidiEvent e)
     {
-        UpdatePlaybackHintTick(e.Tick);
+        UpdatePlaybackHintTick(e.Tick, _playbackUiStopwatch.ElapsedTicks);
         if (ShouldQueueUiEvent(e))
         {
             _pendingUiEvents.Enqueue(e);
@@ -2189,6 +2190,7 @@ public partial class MainWindow : Window
 
         BuildPlaybackTempoTimeline(_plan);
         Interlocked.Exchange(ref _playbackHintTick, 0);
+        Interlocked.Exchange(ref _playbackHintStopwatchTicks, 0);
         _playbackUiStopwatch.Restart();
         _playbackUiLastElapsedMs = 0;
         EnablePianoRollViewportMode();
@@ -2206,6 +2208,7 @@ public partial class MainWindow : Window
         _playbackTotalTicksForUi = 0;
         _playbackUiLastElapsedMs = 0;
         Interlocked.Exchange(ref _playbackHintTick, 0);
+        Interlocked.Exchange(ref _playbackHintStopwatchTicks, 0);
         _playbackTempoSegments.Clear();
         ClearPendingUiEvents();
     }
@@ -2454,7 +2457,17 @@ public partial class MainWindow : Window
         var elapsedMs = _playbackUiStopwatch.Elapsed.TotalMilliseconds;
         var tickFromTime = GetTickAtMilliseconds(elapsedMs);
         var playbackHintTick = Interlocked.Read(ref _playbackHintTick);
-        var resolvedTick = Math.Max(tickFromTime, playbackHintTick);
+        var playbackHintStopwatchTicks = Interlocked.Read(ref _playbackHintStopwatchTicks);
+        var resolvedTick = tickFromTime;
+        if (playbackHintTick > 0 && playbackHintStopwatchTicks > 0)
+        {
+            var hintElapsedMs = StopwatchTicksToMilliseconds(playbackHintStopwatchTicks);
+            var sinceHintMs = Math.Max(0.0, elapsedMs - hintElapsedMs);
+            var hintTimelineMs = GetMillisecondsAtTick(playbackHintTick);
+            var anchoredTick = GetTickAtMilliseconds(hintTimelineMs + sinceHintMs);
+            resolvedTick = Math.Max(playbackHintTick, anchoredTick);
+        }
+
         return Math.Clamp(resolvedTick / _playbackTotalTicksForUi, 0.0, 1.0);
     }
 
@@ -2515,7 +2528,7 @@ public partial class MainWindow : Window
         return 60000.0 / (bpm * Math.Max(ppqn, 1));
     }
 
-    private void UpdatePlaybackHintTick(long tick)
+    private void UpdatePlaybackHintTick(long tick, long stopwatchTicks)
     {
         while (true)
         {
@@ -2527,6 +2540,7 @@ public partial class MainWindow : Window
 
             if (Interlocked.CompareExchange(ref _playbackHintTick, tick, current) == current)
             {
+                Interlocked.Exchange(ref _playbackHintStopwatchTicks, stopwatchTicks);
                 return;
             }
         }
@@ -2563,6 +2577,42 @@ public partial class MainWindow : Window
         var localMs = Math.Max(0.0, ms - segment.StartMilliseconds);
         var tick = segment.StartTick + (localMs / MsPerTick(segment.Bpm, Math.Max(_plan?.TimeBase ?? 1, 1)));
         return Math.Clamp(tick, 0.0, _playbackTotalTicksForUi);
+    }
+
+    private double GetMillisecondsAtTick(long tick)
+    {
+        if (_playbackTempoSegments.Count == 0 || _playbackTotalTicksForUi <= 0)
+        {
+            return 0.0;
+        }
+
+        var clampedTick = Math.Clamp(tick, 0L, _playbackTotalTicksForUi);
+        var left = 0;
+        var right = _playbackTempoSegments.Count - 1;
+        var best = 0;
+
+        while (left <= right)
+        {
+            var mid = (left + right) / 2;
+            var value = _playbackTempoSegments[mid].StartTick;
+            if (value <= clampedTick)
+            {
+                best = mid;
+                left = mid + 1;
+            }
+            else
+            {
+                right = mid - 1;
+            }
+        }
+
+        var segment = _playbackTempoSegments[best];
+        return segment.StartMilliseconds + (clampedTick - segment.StartTick) * MsPerTick(segment.Bpm, Math.Max(_plan?.TimeBase ?? 1, 1));
+    }
+
+    private static double StopwatchTicksToMilliseconds(long ticks)
+    {
+        return ticks * 1000.0 / Stopwatch.Frequency;
     }
 
     private long GetMeasureTicks()

@@ -283,10 +283,10 @@
                 <Grid Margin="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="0"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition x:Name="PerformanceMonitorRow" Height="Auto"/>
+                    <RowDefinition x:Name="CommandPanelRow" Height="Auto"/>
+                    <RowDefinition x:Name="MainTabsRow" Height="*"/>
+                    <RowDefinition x:Name="ProgressPanelRow" Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0"

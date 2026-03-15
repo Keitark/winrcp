@@ -1,60 +1,67 @@
-# WinMcp RCP Player
+# WinRCP
+![License](https://img.shields.io/github/license/Keitark/winrcp)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
+![Framework](https://img.shields.io/badge/framework-.NET%209-512BD4)
 
-Windows-native RCP/G36 player prototype with:
-- In-repo RCP parser (MIT-licensed code in this repository)
-- Real-time scheduler and MIDI event renderer
-- SC-88 Pro inspired desktop UI (WPF)
-- Matrix-based SC-88 LCD display emulation (Roland display SysEx aware)
+## Overview
+`winrcp` is a Windows-native RCP/G36 player focused on accurate playback behavior, practical x68 comparison work, and an SC-88-inspired desktop UI. It includes an in-repo parser, sequence builder, realtime playback engine, LCD display emulation, and reference-comparison tooling used to measure parity against x68 behavior.
 
-## Tech Stack
+## Features
+- RCP v2 and G36 parsing inside the repository.
+- Realtime playback scheduler and MIDI event renderer for Windows.
+- SC-88-inspired WPF monitor UI with Roland display SysEx awareness.
+- X68000 reference-comparison tooling for playback validation and mismatch analysis.
+- Automated regression coverage for parser and sequencing edge cases.
 
-- .NET 9
-- WPF (`src/RcpPlayer.App`)
-- Core parser/playback library (`src/RcpPlayer.Core`)
+## Current Status
+- Core playback defaults are being aligned toward observed x68 behavior.
+- The desktop app currently builds and runs as a local Windows player.
+- Reference comparison work is ongoing for the remaining edge mismatches and x68 runner limitations.
 
-## Windows MIDI Services Note
+## Requirements
+- Windows 10/11
+- .NET 9 SDK
+- A MIDI output target available through Windows MIDI APIs
 
-The app outputs MIDI through `Windows.Devices.Midi` (WinRT MIDI 1.0 API).  
-On supported Windows 11 24H2/25H2 systems, these legacy APIs are routed through the newer Windows MIDI Services compatibility layer.
-
-## Build
+## Quick Start
+1. Build the application:
 
 ```powershell
-dotnet build WinMcpRcpPlayer.sln -c Debug
+dotnet build src/RcpPlayer.App/RcpPlayer.App.csproj -c Release
 ```
 
-## Run
+2. Run the player:
 
 ```powershell
 dotnet run --project src/RcpPlayer.App/RcpPlayer.App.csproj
 ```
 
-## Test
+3. Run the core test project:
 
 ```powershell
-dotnet test tests/RcpPlayer.Core.Tests/RcpPlayer.Core.Tests.csproj -c Debug
+dotnet test tests/RcpPlayer.Core.Tests/RcpPlayer.Core.Tests.csproj
 ```
 
-## Current Parser Coverage
+## Build Notes
+- `src/RcpPlayer.App` contains the WPF desktop application.
+- `src/RcpPlayer.Core` contains parsing, sequencing, playback, and display-state logic.
+- `tests/RcpPlayer.Core.Tests` contains parser and sequence-builder regression coverage.
+- `scripts/compare-rcp-reference.ps1` drives the x68 reference-comparison workflow.
 
-- RCP v2 and G36 header parsing
-- Track parsing and event extraction
-- Playback mapping for notes, CC/program/aftertouch/pitch/channel change
-- Loop start/end (`F9`/`F8`) with bounded infinite-loop expansion
-- User/track SysEx expansion with parameter placeholders
-- SC-88 display SysEx handling:
-  - Display text (`10 00 00`)
-  - Dot page writes (`10 0p 00` / `10 0p 40`)
-  - Display page/time (`10 20 00` / `10 20 01`)
+## Windows MIDI Services Note
+The app outputs MIDI through `Windows.Devices.Midi` (WinRT MIDI 1.0 API). On supported Windows 11 systems, these legacy APIs can be routed through the Windows MIDI Services compatibility layer.
+
+## Project Structure
+- `src/`: application and core library code
+- `tests/`: automated tests
+- `scripts/`: developer automation and x68 comparison tooling
+- `docs/`: handoff notes and architecture/project notes
+- `assets/`: static assets and fixtures
 
 ## License
-
-Code is distributed under the MIT License. See `LICENSE`.
+This project is distributed under the MIT License. See [`LICENSE`](LICENSE).
 
 ## Acknowledgements
-
-Thanks to the maintainers of `foo_midi` and related Recomposer tooling for public documentation and behavior references used to improve compatibility.
-
-- `foo_midi`: https://github.com/stuerp/foo_midi
-- ValleyBell `MidiConverters` (`RCPFormat.txt`, `rcp2mid.c`): https://github.com/ValleyBell/MidiConverters
-- `rcm2smf`: https://github.com/shingo45endo/rcm2smf
+- [`foo_midi`](https://github.com/stuerp/foo_midi)
+- [ValleyBell MidiConverters](https://github.com/ValleyBell/MidiConverters)
+- [`rcm2smf`](https://github.com/shingo45endo/rcm2smf)

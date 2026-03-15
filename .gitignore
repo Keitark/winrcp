@@ -19,4 +19,6 @@ tools/
 run.err
 run.out
 
+tests/
+scripts/*.ps1
 scripts/tmp_*.ps1

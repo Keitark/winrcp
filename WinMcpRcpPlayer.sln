@@ -9,10 +9,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RcpPlayer.Core", "src\RcpPl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RcpPlayer.App", "src\RcpPlayer.App\RcpPlayer.App.csproj", "{6748B128-F9FE-4E32-BEEE-4C323A2719B1}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RcpPlayer.Core.Tests", "tests\RcpPlayer.Core.Tests\RcpPlayer.Core.Tests.csproj", "{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -47,18 +43,6 @@ Global
 		{6748B128-F9FE-4E32-BEEE-4C323A2719B1}.Release|x64.Build.0 = Release|Any CPU
 		{6748B128-F9FE-4E32-BEEE-4C323A2719B1}.Release|x86.ActiveCfg = Release|Any CPU
 		{6748B128-F9FE-4E32-BEEE-4C323A2719B1}.Release|x86.Build.0 = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|x64.Build.0 = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Debug|x86.Build.0 = Debug|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|x64.ActiveCfg = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|x64.Build.0 = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|x86.ActiveCfg = Release|Any CPU
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -66,6 +50,5 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{B18BE11C-07AC-434A-A738-FA85D6567F01} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{6748B128-F9FE-4E32-BEEE-4C323A2719B1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{3AB5A175-9E10-4E0A-97F2-41EFBA6A1AE8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

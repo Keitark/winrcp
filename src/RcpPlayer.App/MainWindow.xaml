@@ -334,7 +334,11 @@
                     </Grid>
                 </Border>
 
-                <Grid Grid.Row="1" Margin="11,0,11,9">
+                <Grid x:Name="PerformanceMonitorSection"
+                      Grid.Row="1"
+                      Margin="11,0,11,9"
+                      Cursor="Hand"
+                      MouseLeftButtonUp="PerformanceMonitorSectionMouseLeftButtonUp">
                     <Border Padding="9"
                             CornerRadius="8"
                             BorderBrush="#3B352A"
@@ -350,7 +354,7 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Text="PERFORMANCE MONITOR"
+                            <TextBlock Text="WinRCP"
                                        Grid.ColumnSpan="2"
                                        FontFamily="Bahnschrift SemiBold"
                                        FontSize="12"
@@ -391,7 +395,36 @@
                                                    Foreground="#2D210F"
                                                    TextTrimming="CharacterEllipsis"/>
 
-                                        <Grid Grid.Row="1" Margin="0,5,0,0">
+                                        <Border x:Name="LcdLine2Viewport"
+                                                Grid.Row="1"
+                                                Margin="0,5,0,0"
+                                                Height="{Binding ElementName=LcdLine2Text, Path=ActualHeight}"
+                                                ClipToBounds="True"
+                                                Background="Transparent">
+                                            <Canvas x:Name="LcdLine2ScrollHost">
+                                                <Canvas.RenderTransform>
+                                                    <TranslateTransform x:Name="LcdLine2ScrollTransform"/>
+                                                </Canvas.RenderTransform>
+                                                <TextBlock x:Name="LcdLine2Text"
+                                                           Canvas.Left="0"
+                                                           Canvas.Top="0"
+                                                           FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+                                                           FontSize="14"
+                                                           FontWeight="Bold"
+                                                           Foreground="#2A1E10"
+                                                           Text=""/>
+                                                <TextBlock x:Name="LcdLine2TextNext"
+                                                           Canvas.Left="0"
+                                                           Canvas.Top="0"
+                                                           FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+                                                           FontSize="14"
+                                                           FontWeight="Bold"
+                                                           Foreground="#2A1E10"
+                                                           Text=""/>
+                                            </Canvas>
+                                        </Border>
+
+                                        <Grid Grid.Row="2" Margin="0,5,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
@@ -412,15 +445,6 @@
                                                        Text="TEMPO ---  TB ---"/>
                                         </Grid>
 
-                                        <TextBlock x:Name="LcdLine2Text"
-                                                   Grid.Row="2"
-                                                   Margin="0,5,0,0"
-                                                   FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
-                                                   FontSize="14"
-                                                   FontWeight="Bold"
-                                                   Foreground="#2A1E10"
-                                                   Text=""/>
-
                                         <Grid Grid.Row="3" Margin="0,8,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -439,14 +463,14 @@
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
 
-                                                <TextBlock Grid.Row="0" Text="PART" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdPartValueText" Grid.Column="1" Grid.Row="0" Text="ALL" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="1" Margin="0,3,0,0" Text="LEVEL" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdLevelValueText" Grid.Column="1" Grid.Row="1" Margin="0,3,0,0" Text="100" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" Text="REVERB" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdReverbValueText" Grid.Column="1" Grid.Row="2" Margin="0,3,0,0" Text="40" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="3" Margin="0,3,0,0" Text="K SHIFT" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdKeyShiftValueText" Grid.Column="1" Grid.Row="3" Margin="0,3,0,0" Text="+0" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="0" Text="PART" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdPartValueText" Grid.Column="1" Grid.Row="0" Margin="6,0,0,0" Text="ALL" FontFamily="Consolas" FontSize="20" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="1" Margin="0,1,0,0" Text="LEVEL" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdLevelValueText" Grid.Column="1" Grid.Row="1" Margin="6,1,0,0" Text="100" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="2" Margin="0,1,0,0" Text="REVERB" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdReverbValueText" Grid.Column="1" Grid.Row="2" Margin="6,1,0,0" Text="40" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="3" Margin="0,1,0,0" Text="K SHIFT" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdKeyShiftValueText" Grid.Column="1" Grid.Row="3" Margin="6,1,0,0" Text="+0" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
                                             </Grid>
 
                                             <Grid Grid.Column="1" Margin="11,0,0,0">
@@ -461,14 +485,14 @@
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
 
-                                                <TextBlock Grid.Row="0" Text="INSTRUMENT" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdInstrumentValueText" Grid.Column="1" Grid.Row="0" Text="===" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="1" Margin="0,3,0,0" Text="PAN" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdPanValueText" Grid.Column="1" Grid.Row="1" Margin="0,3,0,0" Text="64" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" Text="CHORUS" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdChorusValueText" Grid.Column="1" Grid.Row="2" Margin="0,3,0,0" Text="00" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock Grid.Row="3" Margin="0,3,0,0" Text="DELAY" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
-                                                <TextBlock x:Name="LcdDelayValueText" Grid.Column="1" Grid.Row="3" Margin="0,3,0,0" Text="00" FontFamily="Consolas" FontSize="16" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="0" Text="INSTRUMENT" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdInstrumentValueText" Grid.Column="1" Grid.Row="0" Margin="6,0,0,0" Text="===" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="1" Margin="0,1,0,0" Text="PAN" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdPanValueText" Grid.Column="1" Grid.Row="1" Margin="6,1,0,0" Text="64" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="2" Margin="0,1,0,0" Text="CHORUS" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdChorusValueText" Grid.Column="1" Grid.Row="2" Margin="6,1,0,0" Text="00" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock Grid.Row="3" Margin="0,1,0,0" Text="DELAY" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
+                                                <TextBlock x:Name="LcdDelayValueText" Grid.Column="1" Grid.Row="3" Margin="6,1,0,0" Text="00" FontFamily="Consolas" FontSize="18" FontWeight="Bold" Foreground="#3A2B17"/>
                                             </Grid>
                                         </Grid>
 
@@ -488,7 +512,7 @@
                                                    Text="-SOUND Canvas-"
                                                    HorizontalAlignment="Center"
                                                    FontFamily="Consolas"
-                                                   FontSize="17"
+                                                   FontSize="18"
                                                    FontWeight="Bold"
                                                    Foreground="#2E2111"/>
 
@@ -626,13 +650,17 @@
                     </Border>
                 </Grid>
 
-                <Border Grid.Row="2"
+                <Border x:Name="CommandPanel"
+                        Grid.Row="2"
                         Margin="11,0,11,9"
                         Padding="9"
                         CornerRadius="6"
                         BorderBrush="#87785C"
                         BorderThickness="1"
                         Background="#E7DEC6">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="CommandPanelTransform"/>
+                    </Border.RenderTransform>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="3*"/>
@@ -733,15 +761,19 @@
                                 Height="24"
                                 FontFamily="Bahnschrift SemiBold"
                                 Style="{StaticResource AmberCommandButtonStyle}"
-                                Background="#7E2929"
-                                Foreground="White"
+                                Background="#A8752D"
+                                BorderBrush="#7A5320"
+                                Foreground="#1F160B"
                                 Content="Stop"
                                 IsEnabled="False"
                                 Click="StopClick"/>
                     </Grid>
                 </Border>
 
-                <Grid Grid.Row="3" Margin="11,0,11,0">
+                <Grid x:Name="MainTabsHost" Grid.Row="3" Margin="11,0,11,0">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="MainTabsHostTransform"/>
+                    </Grid.RenderTransform>
                     <Border Padding="6"
                             CornerRadius="6"
                             BorderBrush="#7E735E"
@@ -823,13 +855,17 @@
                     </Border>
                 </Grid>
 
-                <Border Grid.Row="4"
+                <Border x:Name="ProgressPanel"
+                        Grid.Row="4"
                         Margin="11,9,11,11"
                         Padding="8"
                         CornerRadius="6"
                         BorderBrush="#3C4A39"
                         BorderThickness="1"
                         Background="#0D150E">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="ProgressPanelTransform"/>
+                    </Border.RenderTransform>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

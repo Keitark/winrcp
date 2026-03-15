@@ -9,6 +9,8 @@ namespace RcpPlayer.Core.Playback;
 public sealed class RcpPlaybackRunner
 {
     private const double DispatchLeadTimeMs = 2.0;
+    private const int RolandDt1MaxDataBytesPerPacket = 256;
+    private const int RolandDt1InterPacketDelayMs = 20;
 
     public async Task PlayAsync(
         RcpPlaybackPlan plan,
@@ -289,8 +291,11 @@ public sealed class RcpPlaybackRunner
         for (var channel = 0; channel < 16; channel++)
         {
             var status = (byte)(0xB0 | channel);
-            var message = (uint)(status | (123 << 8));
-            _ = SendShortBlocking(output, message, cancellationToken);
+            // Release hold pedals first, then force voice cleanup.
+            _ = SendShortBlocking(output, (uint)(status | (64 << 8)), cancellationToken);   // CC64 Sustain = 0
+            _ = SendShortBlocking(output, (uint)(status | (66 << 8)), cancellationToken);   // CC66 Sostenuto = 0
+            _ = SendShortBlocking(output, (uint)(status | (123 << 8)), cancellationToken);  // CC123 All Notes Off
+            _ = SendShortBlocking(output, (uint)(status | (120 << 8)), cancellationToken);  // CC120 All Sound Off
         }
     }
 
@@ -310,14 +315,102 @@ public sealed class RcpPlaybackRunner
     private static double SendSysExBlocking(IMidiOutput output, byte[] data, CancellationToken cancellationToken)
     {
         var start = Stopwatch.GetTimestamp();
-        var task = output.SendSysExAsync(data, cancellationToken);
-        if (!task.IsCompletedSuccessfully)
+        if (TryBuildRolandDt1Packets(data, RolandDt1MaxDataBytesPerPacket, out var packets))
         {
-            task.GetAwaiter().GetResult();
+            for (var i = 0; i < packets.Count; i++)
+            {
+                var task = output.SendSysExAsync(packets[i], cancellationToken);
+                if (!task.IsCompletedSuccessfully)
+                {
+                    task.GetAwaiter().GetResult();
+                }
+
+                if (i + 1 < packets.Count)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (cancellationToken.WaitHandle.WaitOne(RolandDt1InterPacketDelayMs))
+                    {
+                        throw new OperationCanceledException(cancellationToken);
+                    }
+                }
+            }
+        }
+        else
+        {
+            var task = output.SendSysExAsync(data, cancellationToken);
+            if (!task.IsCompletedSuccessfully)
+            {
+                task.GetAwaiter().GetResult();
+            }
         }
 
         var elapsed = Stopwatch.GetTimestamp() - start;
         return StopwatchTicksToMilliseconds(elapsed);
+    }
+
+    private static bool TryBuildRolandDt1Packets(byte[] data, int maxDataBytes, out List<byte[]> packets)
+    {
+        packets = [];
+        if (maxDataBytes <= 0 || data.Length < 11)
+        {
+            return false;
+        }
+
+        if (data[0] != 0xF0 || data[^1] != 0xF7)
+        {
+            return false;
+        }
+
+        // Roland SysEx Data Set 1 (DT1): F0 41 dd mm 12 aa bb cc data... ss F7
+        if (data[1] != 0x41 || data[4] != 0x12)
+        {
+            return false;
+        }
+
+        var payloadDataLength = data.Length - 10;
+        if (payloadDataLength <= maxDataBytes)
+        {
+            return false;
+        }
+
+        var baseAddress = ((data[5] & 0x7F) << 14) | ((data[6] & 0x7F) << 7) | (data[7] & 0x7F);
+        var deviceId = data[2];
+        var modelId = data[3];
+        var copied = 0;
+        packets = new List<byte[]>((payloadDataLength + maxDataBytes - 1) / maxDataBytes);
+
+        while (copied < payloadDataLength)
+        {
+            var chunkLength = Math.Min(maxDataBytes, payloadDataLength - copied);
+            var chunkAddress = (baseAddress + copied) & 0x1FFFFF;
+            var addrH = (byte)((chunkAddress >> 14) & 0x7F);
+            var addrM = (byte)((chunkAddress >> 7) & 0x7F);
+            var addrL = (byte)(chunkAddress & 0x7F);
+
+            var packet = new byte[chunkLength + 10];
+            packet[0] = 0xF0;
+            packet[1] = 0x41;
+            packet[2] = deviceId;
+            packet[3] = modelId;
+            packet[4] = 0x12;
+            packet[5] = addrH;
+            packet[6] = addrM;
+            packet[7] = addrL;
+            Buffer.BlockCopy(data, 8 + copied, packet, 8, chunkLength);
+
+            var sum = 0;
+            for (var i = 5; i < 8 + chunkLength; i++)
+            {
+                sum += packet[i];
+            }
+
+            packet[8 + chunkLength] = (byte)((128 - (sum & 0x7F)) & 0x7F);
+            packet[9 + chunkLength] = 0xF7;
+            packets.Add(packet);
+            copied += chunkLength;
+        }
+
+        return packets.Count > 1;
     }
 
     private static void RecordSendTiming(PlaybackRunDiagnostics diagnostics, double sendMs)

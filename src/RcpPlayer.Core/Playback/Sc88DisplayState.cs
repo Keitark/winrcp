@@ -23,6 +23,7 @@ public sealed class Sc88DisplayState
     private DateTimeOffset _activeDisplayUntilUtc;
     private string _line1Source = string.Empty;
     private DateTimeOffset _line1ScrollStartUtc;
+    private bool _hasDisplayTextOverride;
 
     public Sc88DisplayState()
     {
@@ -30,6 +31,8 @@ public sealed class Sc88DisplayState
     }
 
     public string DisplayLine1 => GetDisplayLine1(DateTimeOffset.UtcNow);
+    public string Line1Source => _line1Source;
+    public bool HasDisplayTextOverride => _hasDisplayTextOverride;
 
     public string DisplayLine2 => new(_displayText, VisibleLineLength, VisibleLineLength);
 
@@ -48,14 +51,21 @@ public sealed class Sc88DisplayState
         _activeDisplayUntilUtc = DateTimeOffset.MinValue;
         _line1Source = string.Empty;
         _line1ScrollStartUtc = DateTimeOffset.MinValue;
+        _hasDisplayTextOverride = false;
     }
 
     public void SetDisplayedText(string line1, string? line2 = null, DateTimeOffset? nowUtc = null)
+    {
+        SetDisplayedText(line1, line2, nowUtc, hasDisplayTextOverride: false);
+    }
+
+    private void SetDisplayedText(string line1, string? line2, DateTimeOffset? nowUtc, bool hasDisplayTextOverride)
     {
         line1 = NormalizeToSingleLine(line1);
         line2 = NormalizeToSingleLine(line2 ?? string.Empty);
         _line1Source = line1;
         _line1ScrollStartUtc = nowUtc ?? DateTimeOffset.UtcNow;
+        _hasDisplayTextOverride = hasDisplayTextOverride;
 
         Array.Fill(_displayText, ' ');
         CopyLine(line1, 0);
@@ -71,17 +81,12 @@ public sealed class Sc88DisplayState
     {
         if (!allowScroll)
         {
-            if (_line1Source.Length <= VisibleLineLength)
-            {
-                return new(_displayText, 0, VisibleLineLength);
-            }
-
-            return _line1Source[..VisibleLineLength];
+            return _line1Source;
         }
 
-        if (_line1Source.Length <= VisibleLineLength)
+        if (string.IsNullOrEmpty(_line1Source))
         {
-            return new(_displayText, 0, VisibleLineLength);
+            return string.Empty;
         }
 
         if (_line1ScrollStartUtc == DateTimeOffset.MinValue)
@@ -92,7 +97,7 @@ public sealed class Sc88DisplayState
         var elapsed = nowUtc - _line1ScrollStartUtc;
         if (elapsed <= Line1ScrollStartDelay)
         {
-            return _line1Source[..VisibleLineLength];
+            return _line1Source;
         }
 
         var scrollElapsed = elapsed - Line1ScrollStartDelay;
@@ -107,10 +112,10 @@ public sealed class Sc88DisplayState
         }
 
         var offset = cycleElapsedTicks >= scrollTicks
-            ? scrollSource.Length - 1
+            ? 0
             : (int)(cycleElapsedTicks / stepTicks);
         var wrapped = scrollSource + _line1Source;
-        return wrapped.Substring(offset, VisibleLineLength);
+        return wrapped[offset..];
     }
 
     public void ResetLine1Scroll(DateTimeOffset? nowUtc = null)
@@ -231,10 +236,15 @@ public sealed class Sc88DisplayState
 
     public ushort[] GetCurrentRows(IReadOnlyList<double>? partLevels, DateTimeOffset nowUtc, out int activeDisplayPage)
     {
+        return GetCurrentRows(partLevels, null, nowUtc, out activeDisplayPage);
+    }
+
+    public ushort[] GetCurrentRows(IReadOnlyList<double>? partLevels, IReadOnlyList<double>? partPeakLevels, DateTimeOffset nowUtc, out int activeDisplayPage)
+    {
         activeDisplayPage = GetCurrentDisplayPage(nowUtc);
         if (activeDisplayPage == 0)
         {
-            return BuildBarRows(partLevels);
+            return BuildBarRows(partLevels, partPeakLevels);
         }
 
         return (ushort[])_dotPages[activeDisplayPage - 1].Clone();
@@ -263,7 +273,7 @@ public sealed class Sc88DisplayState
         }
 
         var text = new string(chars).TrimEnd();
-        SetDisplayedText(text, string.Empty, nowUtc);
+        SetDisplayedText(text, string.Empty, nowUtc, hasDisplayTextOverride: true);
     }
 
     private void ApplyDotPage(int pageNo, ReadOnlySpan<byte> payload64)
@@ -305,7 +315,7 @@ public sealed class Sc88DisplayState
         };
     }
 
-    private static ushort[] BuildBarRows(IReadOnlyList<double>? partLevels)
+    private static ushort[] BuildBarRows(IReadOnlyList<double>? partLevels, IReadOnlyList<double>? partPeakLevels)
     {
         var rows = new ushort[RowCount];
         if (partLevels is null)
@@ -320,6 +330,23 @@ public sealed class Sc88DisplayState
             for (var y = 0; y < height; y++)
             {
                 var row = RowCount - 1 - y;
+                rows[row] |= (ushort)(1 << (15 - part));
+            }
+        }
+
+        if (partPeakLevels is not null)
+        {
+            for (var part = 0; part < Math.Min(partPeakLevels.Count, PartCount); part++)
+            {
+                var peakClamped = Math.Clamp(partPeakLevels[part], 0.0, 100.0);
+                if (peakClamped <= 0.0)
+                {
+                    continue;
+                }
+
+                var peakHeight = (int)Math.Round(peakClamped * RowCount / 100.0, MidpointRounding.AwayFromZero);
+                peakHeight = Math.Clamp(peakHeight, 1, RowCount);
+                var row = RowCount - peakHeight;
                 rows[row] |= (ushort)(1 << (15 - part));
             }
         }

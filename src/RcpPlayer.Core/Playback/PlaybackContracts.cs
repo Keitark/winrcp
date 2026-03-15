@@ -17,6 +17,9 @@ public sealed class ScheduledMidiEvent
 {
     public required long Tick { get; init; }
     public required MidiEventPacket Packet { get; init; }
+    public int SourceTrackId { get; init; } = -1;
+    public int SourceEventIndex { get; init; } = -1;
+    public byte SourceCommand { get; init; }
 }
 
 public sealed class TempoEvent

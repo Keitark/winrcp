@@ -12,3 +12,11 @@ _research/
 
 TestResults/
 *.trx
+*.obj
+
+collection/
+tools/
+run.err
+run.out
+
+scripts/tmp_*.ps1

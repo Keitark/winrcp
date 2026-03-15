@@ -15,6 +15,7 @@ public sealed class RcpSong
     public required int TempoBpm { get; init; }
     public required int BeatNumerator { get; init; }
     public required int BeatDenominator { get; init; }
+    public int GlobalTransposition { get; init; }
     public required string? Cm6FileName { get; init; }
     public required string? GsdAFileName { get; init; }
     public required string? GsdBFileName { get; init; }
@@ -28,6 +29,10 @@ public sealed class RcpTrack
     public required string Name { get; init; }
     public required int DefaultChannel { get; init; }
     public required bool IsMuted { get; init; }
+    public int RhythmMode { get; init; }
+    public int TrackTransposition { get; init; }
+    public int StartTick { get; init; }
+    public bool IsDummyChannel { get; init; }
     public required IReadOnlyList<RcpEvent> Events { get; init; }
 }
 

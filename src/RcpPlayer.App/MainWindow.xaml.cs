@@ -612,7 +612,6 @@ public partial class MainWindow : Window
                 await SendPlaybackInitializationAsync(_playbackCts.Token);
             }
             _isPlaybackActive = true;
-            ApplyShellLayout(animated: true);
             UpdateTitleScrollActivation();
             SyncLcdText();
             StartPlaybackUiAnimation();
@@ -841,10 +840,6 @@ public partial class MainWindow : Window
         PlayButton.IsEnabled = !isPlaying;
         StopButton.IsEnabled = isPlaying;
         EndpointCombo.IsEnabled = !isPlaying;
-        if (_shellLayoutInitialized)
-        {
-            ApplyShellLayout(animated: true);
-        }
     }
 
     private void ApplyShellLayout(bool animated)

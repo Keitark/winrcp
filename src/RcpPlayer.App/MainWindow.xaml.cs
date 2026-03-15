@@ -2,12 +2,14 @@ using System.Collections.ObjectModel;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -24,6 +26,9 @@ public partial class MainWindow : Window
     private const int MaxEventLogEntries = 220;
     private const int EventLogFlushBatchSize = 48;
     private const int MaxUiEventsPerFrame = 32;
+    private const double MeterMainFallPer33Ms = 3.1;
+    private const double MeterPeakHoldMs = 220.0;
+    private const double MeterPeakFallPer33Ms = 3.6;
     // Realtime event log is enabled by default.
     // Set WINRCP_REALTIME_LOG=0 to disable when investigating performance.
     private static readonly bool EnableRealtimeEventLog =
@@ -33,9 +38,21 @@ public partial class MainWindow : Window
     private const double PianoRollNoteHeight = 9.0;
     private const double PianoRollLeftPadding = 42.0;
     private const double PianoRollTopPadding = 10.0;
-    private const double LoadedFileScrollSpeedPerTick = 0.9;
+    private const double LoadedFileScrollSpeedPerSecond = 27.0;
     private const double LoadedFileScrollGap = 24.0;
     private const double LoadedFileScrollPauseMsDefault = 700.0;
+    private const double LcdCommentScrollLinePauseMs = 200.0;
+    private const double LcdCommentScrollStartPauseMs = 500.0;
+    private const double LcdCommentScrollTickMs = 220.0;
+    private const double LcdCommentScrollStepPerChar = 0.25;
+    private const double LcdCommentGapPerChar = 0.3;
+    private const double CompactMinWindowHeight = 250.0;
+    private const double ShellSlideOffset = 26.0;
+    private static readonly TimeSpan LcdTitleScrollStartDelay = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan LcdTitleScrollStepInterval = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan LcdTitleScrollLoopPause = TimeSpan.FromMilliseconds(500);
+    private static readonly Duration ShellAnimationDuration = new(TimeSpan.FromMilliseconds(220));
+    private const string LcdTitleScrollGap = "   ";
     private static readonly string[] GmProgramNames =
     [
         "Acoustic Piano", "Bright Piano", "Electric Grand", "Honky-tonk", "Electric Piano 1", "Electric Piano 2", "Harpsichord", "Clavinet",
@@ -68,6 +85,8 @@ public partial class MainWindow : Window
     private readonly ConcurrentQueue<ScheduledMidiEvent> _pendingUiEvents = [];
     private readonly double[] _partLevelTargets = new double[16];
     private readonly double[] _partLevels = new double[16];
+    private readonly double[] _partPeakLevels = new double[16];
+    private readonly double[] _partPeakHoldMs = new double[16];
     private readonly int[] _programByChannel = new int[16];
     private readonly int[] _partVolume = new int[16];
     private readonly int[] _partPan = new int[16];
@@ -84,6 +103,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _playbackUiTimer;
     private readonly DispatcherTimer _eventLogFlushTimer;
     private readonly DispatcherTimer _loadedFileScrollTimer;
+    private readonly DispatcherTimer _lcdCommentScrollTimer;
     private readonly Stopwatch _playbackUiStopwatch = new();
     private readonly Brush _lcdOnBrush = new SolidColorBrush(Color.FromRgb(64, 48, 26));
     private readonly Brush _lcdOffBrush = new SolidColorBrush(Color.FromRgb(146, 122, 76));
@@ -93,6 +113,7 @@ public partial class MainWindow : Window
     private readonly Brush _pianoRollOctaveBrush = new SolidColorBrush(Color.FromRgb(187, 171, 133));
     private readonly Brush _pianoRollPlayheadBrush = new SolidColorBrush(Color.FromRgb(166, 33, 33));
     private readonly List<PianoRollNoteVisual> _pianoRollNoteVisuals = [];
+    private readonly HashSet<Rectangle> _pianoRollMountedNoteShapes = [];
     private readonly TranslateTransform _pianoRollAutoScrollTransform = new();
     private static readonly JsonSerializerOptions PreferencesJsonOptions = new() { WriteIndented = true };
     private readonly string _preferencesPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "winrcp", "settings.json");
@@ -103,11 +124,14 @@ public partial class MainWindow : Window
     private long _pianoRollTotalTicks;
     private double _pianoRollScrollTargetOffset;
     private double _pianoRollScrollCurrentOffset;
+    private bool _isPianoRollViewportMode;
+    private double _pianoRollViewportAnchorX = double.NaN;
     private double _playheadProgressRatio;
     private bool _isPianoRollHardwareScrollEnabled;
     private bool _isPianoRollRenderingHooked;
     private double _playbackTotalMilliseconds;
     private long _playbackTotalTicksForUi;
+    private double _playbackUiLastElapsedMs;
     private long _playbackHintTick;
     private readonly List<PlaybackTempoSegment> _playbackTempoSegments = [];
     private int _logScrollSkipCounter;
@@ -115,11 +139,25 @@ public partial class MainWindow : Window
     private bool _isAllDisplayMode = true;
     private int _selectedPartIndex;
     private bool _isTitleScrollActive;
+    private bool _isPlaybackActive;
     private TaskCompletionSource<bool>? _playbackStoppedSignal;
     private AppPreferences _preferences = new();
     private bool _suppressEndpointSelectionPersistence;
     private double _loadedFileScrollOffset;
     private double _loadedFileScrollPauseMs;
+    private long _loadedFileScrollLastTickMs;
+    private string _lcdTitleText = string.Empty;
+    private DateTimeOffset _lcdTitleScrollStartUtc = DateTimeOffset.MinValue;
+    private IReadOnlyList<string> _lcdCommentLines = ["READY"];
+    private int _lcdCommentLineIndex;
+    private double _lcdCommentPauseMs = LcdCommentScrollStartPauseMs;
+    private double _lcdCommentScrollOffset;
+    private double _lcdCommentScrollStepPx;
+    private double _lcdCommentGapPx;
+    private double _lcdCommentTransitionDistance;
+    private bool _isCompactShell = true;
+    private bool _shellLayoutInitialized;
+    private double _expandedWindowHeight;
 
     public MainWindow()
     {
@@ -127,31 +165,37 @@ public partial class MainWindow : Window
         InitializeLcdMatrix();
 
         EventLogList.ItemsSource = _eventLog;
-        _meterDecayTimer = new DispatcherTimer
+        _meterDecayTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
-        _meterDecayTimer.Tick += (_, _) => DecayMeters();
+        _meterDecayTimer.Tick += MeterDecayTick;
         _meterDecayTimer.Start();
 
-        _playbackUiTimer = new DispatcherTimer
+        _playbackUiTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(16)
         };
         _playbackUiTimer.Tick += PlaybackUiTick;
 
-        _eventLogFlushTimer = new DispatcherTimer
+        _eventLogFlushTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(50)
         };
         _eventLogFlushTimer.Tick += FlushPendingEventLog;
         _eventLogFlushTimer.Start();
 
-        _loadedFileScrollTimer = new DispatcherTimer
+        _loadedFileScrollTimer = new DispatcherTimer(DispatcherPriority.Normal)
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
         _loadedFileScrollTimer.Tick += LoadedFileScrollTick;
+
+        _lcdCommentScrollTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(LcdCommentScrollTickMs)
+        };
+        _lcdCommentScrollTimer.Tick += LcdCommentScrollTick;
 
         PianoRollCanvas.RenderTransform = _pianoRollAutoScrollTransform;
         PianoRollScroll.SizeChanged += PianoRollScrollSizeChanged;
@@ -159,6 +203,19 @@ public partial class MainWindow : Window
         LcdMatrixGrid.SizeChanged += (_, _) => LayoutLcdMatrixCells();
         LoadedFileViewport.SizeChanged += (_, _) => RefreshLoadedFileScroll();
         LoadedFileText.SizeChanged += (_, _) => RefreshLoadedFileScroll();
+        LcdLine1Text.SizeChanged += (_, _) =>
+        {
+            if (UpdateTitleScrollActivation())
+            {
+                SyncLcdText();
+            }
+        };
+        LcdLine2Text.SizeChanged += (_, _) =>
+        {
+            UpdateCommentScrollMetrics();
+            ResetCommentVisualPosition();
+        };
+        LcdLine2TextNext.SizeChanged += (_, _) => UpdateCommentScrollMetrics();
 
         ResetDisplayState();
     }
@@ -259,6 +316,17 @@ public partial class MainWindow : Window
     {
         LoadPreferences();
         await RefreshEndpointsAsync();
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_shellLayoutInitialized)
+            {
+                return;
+            }
+
+            _expandedWindowHeight = Math.Max(Height, ActualHeight);
+            _shellLayoutInitialized = true;
+            ApplyShellLayout(animated: false);
+        }), DispatcherPriority.Loaded);
     }
 
     private async void WindowClosing(object? sender, CancelEventArgs e)
@@ -292,6 +360,22 @@ public partial class MainWindow : Window
         catch (InvalidOperationException)
         {
         }
+    }
+
+    private void PerformanceMonitorSectionMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (!_isCompactShell)
+        {
+            _expandedWindowHeight = Math.Max(_expandedWindowHeight, ActualHeight);
+        }
+
+        _isCompactShell = !_isCompactShell;
+        ApplyShellLayout(animated: true);
     }
 
     private void MinimizeWindowClick(object sender, RoutedEventArgs e)
@@ -408,8 +492,6 @@ public partial class MainWindow : Window
 
     private async void OpenFileClick(object sender, RoutedEventArgs e)
     {
-        await StopPlaybackIfRunningAsync();
-
         var dialog = new OpenFileDialog
         {
             Title = "Open Sequence File",
@@ -420,6 +502,8 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        await StopPlaybackIfRunningAsync();
 
         try
         {
@@ -444,6 +528,7 @@ public partial class MainWindow : Window
             }
 
             ResetPartParameters();
+            _lcdState.Reset();
 
             LoadedFileText.Text = dialog.FileName;
             RefreshLoadedFileScroll();
@@ -456,9 +541,12 @@ public partial class MainWindow : Window
                     .FirstOrDefault() ?? subtitle;
             }
 
-            _lcdState.SetDisplayedText(title, subtitle);
-            _isTitleScrollActive = false;
-            _lcdState.ResetLine1Scroll(DateTimeOffset.UtcNow);
+            _lcdTitleText = title;
+            ResetTitleScroll();
+            ConfigureCommentScroll(_song.Comment, subtitle);
+            _isPlaybackActive = false;
+            ApplyShellLayout(animated: false);
+            UpdateTitleScrollActivation();
             SyncLcdText();
             UpdateSummaryTexts();
             UpdatePartInfoPanel();
@@ -510,8 +598,9 @@ public partial class MainWindow : Window
             {
                 await SendPlaybackInitializationAsync(_playbackCts.Token);
             }
-            _isTitleScrollActive = true;
-            _lcdState.ResetLine1Scroll(DateTimeOffset.UtcNow);
+            _isPlaybackActive = true;
+            ApplyShellLayout(animated: true);
+            UpdateTitleScrollActivation();
             SyncLcdText();
             StartPlaybackUiAnimation();
             StatusText.Text = "Playing...";
@@ -534,8 +623,8 @@ public partial class MainWindow : Window
         finally
         {
             _playbackStoppedSignal?.TrySetResult(true);
-            _isTitleScrollActive = false;
-            _lcdState.ResetLine1Scroll(DateTimeOffset.UtcNow);
+            _isPlaybackActive = false;
+            UpdateTitleScrollActivation();
             SyncLcdText();
             StopPlaybackUiAnimation();
             _playbackCts.Dispose();
@@ -549,8 +638,9 @@ public partial class MainWindow : Window
 
     private void StopClick(object sender, RoutedEventArgs e)
     {
-        _isTitleScrollActive = false;
-        _lcdState.ResetLine1Scroll(DateTimeOffset.UtcNow);
+        _isPlaybackActive = false;
+        UpdateTitleScrollActivation();
+        UpdateCommentScrollTimerState();
         SyncLcdText();
         _playbackCts?.Cancel();
     }
@@ -597,6 +687,8 @@ public partial class MainWindow : Window
                 {
                     _partLevelTargets[i] = 0;
                     _partLevels[i] = 0;
+                    _partPeakLevels[i] = 0;
+                    _partPeakHoldMs[i] = 0;
                 }
             }
 
@@ -614,6 +706,8 @@ public partial class MainWindow : Window
             {
                 _partLevelTargets[part] = 0;
                 _partLevels[part] = 0;
+                _partPeakLevels[part] = 0;
+                _partPeakHoldMs[part] = 0;
             }
 
             LcdEventText.Text = _partMuted[part]
@@ -680,16 +774,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            // GM System On: makes channel 10 rhythm on General MIDI devices.
-            await _midiOutput.SendSysExAsync([0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7], cancellationToken);
-            await Task.Delay(20, cancellationToken);
-
             // Roland GS Reset: preferred for SC-88 style/GS playback.
             await _midiOutput.SendSysExAsync([0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7F, 0x00, 0x41, 0xF7], cancellationToken);
             await Task.Delay(60, cancellationToken);
 
             await SendAllNotesOffForChannelsAsync(Enumerable.Range(0, 16));
-            AppendLog("-- INIT sent GM/GS reset for consistent instrument map --");
+            AppendLog("-- INIT sent GS reset --");
         }
         catch (OperationCanceledException)
         {
@@ -738,6 +828,128 @@ public partial class MainWindow : Window
         PlayButton.IsEnabled = !isPlaying;
         StopButton.IsEnabled = isPlaying;
         EndpointCombo.IsEnabled = !isPlaying;
+        if (_shellLayoutInitialized)
+        {
+            ApplyShellLayout(animated: true);
+        }
+    }
+
+    private void ApplyShellLayout(bool animated)
+    {
+        if (!_shellLayoutInitialized)
+        {
+            return;
+        }
+
+        if (!_isCompactShell)
+        {
+            _expandedWindowHeight = Math.Max(_expandedWindowHeight, ActualHeight);
+        }
+
+        var showLowerPanels = !_isCompactShell;
+        var showProgressPanel = !_isCompactShell || _isPlaybackActive;
+
+        AnimateShellPanel(CommandPanel, CommandPanelTransform, showLowerPanels, animated, ShellSlideOffset);
+        AnimateShellPanel(MainTabsHost, MainTabsHostTransform, showLowerPanels, animated, ShellSlideOffset * 1.2);
+        AnimateShellPanel(ProgressPanel, ProgressPanelTransform, showProgressPanel, animated, ShellSlideOffset * 0.85);
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var targetHeight = _isCompactShell
+                ? GetCompactShellHeight(showProgressPanel)
+                : Math.Max(_expandedWindowHeight, GetCompactShellHeight(showProgressPanel));
+            AnimateWindowHeight(targetHeight, animated);
+        }), DispatcherPriority.Loaded);
+    }
+
+    private void AnimateShellPanel(FrameworkElement element, TranslateTransform transform, bool shouldShow, bool animated, double offset)
+    {
+        element.BeginAnimation(OpacityProperty, null);
+        transform.BeginAnimation(TranslateTransform.YProperty, null);
+
+        if (!animated)
+        {
+            element.Visibility = shouldShow ? Visibility.Visible : Visibility.Collapsed;
+            element.IsHitTestVisible = shouldShow;
+            element.Opacity = shouldShow ? 1.0 : 0.0;
+            transform.Y = shouldShow ? 0.0 : offset;
+            return;
+        }
+
+        if (shouldShow)
+        {
+            element.Visibility = Visibility.Visible;
+            element.IsHitTestVisible = true;
+            element.Opacity = 0.0;
+            transform.Y = offset;
+
+            var opacityAnim = new DoubleAnimation(1.0, ShellAnimationDuration);
+            var slideAnim = new DoubleAnimation(0.0, ShellAnimationDuration)
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            element.BeginAnimation(OpacityProperty, opacityAnim);
+            transform.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+            return;
+        }
+
+        element.IsHitTestVisible = false;
+        var fadeAnim = new DoubleAnimation(0.0, ShellAnimationDuration);
+        fadeAnim.Completed += (_, _) =>
+        {
+            element.Visibility = Visibility.Collapsed;
+            element.Opacity = 0.0;
+            transform.Y = offset;
+        };
+        var hideSlideAnim = new DoubleAnimation(offset, ShellAnimationDuration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        element.BeginAnimation(OpacityProperty, fadeAnim);
+        transform.BeginAnimation(TranslateTransform.YProperty, hideSlideAnim);
+    }
+
+    private void AnimateWindowHeight(double targetHeight, bool animated)
+    {
+        MinHeight = _isCompactShell ? CompactMinWindowHeight : 465.0;
+        if (!animated)
+        {
+            Height = targetHeight;
+            return;
+        }
+
+        BeginAnimation(HeightProperty, null);
+        var heightAnim = new DoubleAnimation(targetHeight, ShellAnimationDuration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        BeginAnimation(HeightProperty, heightAnim);
+    }
+
+    private double GetCompactShellHeight(bool includeProgressPanel)
+    {
+        UpdateLayout();
+        var anchor = includeProgressPanel && ProgressPanel.Visibility == Visibility.Visible
+            ? (FrameworkElement)ProgressPanel
+            : PerformanceMonitorSection;
+        var bottom = anchor.TranslatePoint(new Point(0, anchor.ActualHeight), this).Y;
+        return Math.Max(CompactMinWindowHeight, Math.Ceiling(bottom + 24.0));
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? origin) where T : DependencyObject
+    {
+        var current = origin;
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private void OnEventDispatched(ScheduledMidiEvent e)
@@ -768,7 +980,7 @@ public partial class MainWindow : Window
         return kind is 0xB0 or 0xC0 or 0xE0;
     }
 
-    private void UpdateDisplayFromEvent(ScheduledMidiEvent e)
+    private void UpdateDisplayFromEvent(ScheduledMidiEvent e, bool refreshVisuals)
     {
         if (e.Packet.Kind == MidiMessageKind.SysEx)
         {
@@ -776,8 +988,12 @@ public partial class MainWindow : Window
             if (handled)
             {
                 LcdEventText.Text = summary;
-                SyncLcdText();
-                RefreshLcdMatrix();
+                if (refreshVisuals)
+                {
+                    SyncLcdText();
+                    UpdatePartInfoPanel();
+                    RefreshLcdMatrix();
+                }
                 AppendRealtimeEventLog($"[{e.Tick,7}] {summary}");
             }
             else if (!string.IsNullOrWhiteSpace(summary))
@@ -830,13 +1046,29 @@ public partial class MainWindow : Window
                 break;
         }
 
-        UpdatePartInfoPanel();
-        RefreshLcdMatrix();
+        if (refreshVisuals)
+        {
+            UpdatePartInfoPanel();
+            RefreshLcdMatrix();
+        }
     }
 
-    private void DecayMeters()
+    private void MeterDecayTick(object? sender, EventArgs e)
     {
-        const double decay = 2.3;
+        // Playback UI tick drives smooth time-based decay while running.
+        if (_playbackUiTimer.IsEnabled)
+        {
+            return;
+        }
+
+        DecayMeters(_meterDecayTimer.Interval.TotalMilliseconds);
+    }
+
+    private void DecayMeters(double deltaMs)
+    {
+        var clampedDelta = Math.Clamp(deltaMs, 0.5, 100.0);
+        var decay = MeterMainFallPer33Ms * (clampedDelta / 33.0);
+        var peakFall = MeterPeakFallPer33Ms * (clampedDelta / 33.0);
         for (var i = 0; i < _partLevels.Length; i++)
         {
             var current = _partLevels[i];
@@ -844,6 +1076,20 @@ public partial class MainWindow : Window
             current = Math.Max(current, _partLevelTargets[i]);
             _partLevelTargets[i] = Math.Max(0, _partLevelTargets[i] - (decay * 0.7));
             _partLevels[i] = current;
+
+            if (current >= _partPeakLevels[i] - 0.001)
+            {
+                _partPeakLevels[i] = current;
+                _partPeakHoldMs[i] = MeterPeakHoldMs;
+            }
+            else if (_partPeakHoldMs[i] > 0)
+            {
+                _partPeakHoldMs[i] = Math.Max(0, _partPeakHoldMs[i] - clampedDelta);
+            }
+            else
+            {
+                _partPeakLevels[i] = Math.Max(current, _partPeakLevels[i] - peakFall);
+            }
         }
 
         // Keep the LCD title scroll smooth even when no MIDI events arrive.
@@ -904,12 +1150,15 @@ public partial class MainWindow : Window
     private void ResetDisplayState()
     {
         _lcdState.Reset();
-        _isTitleScrollActive = false;
-        _lcdState.ResetLine1Scroll(DateTimeOffset.UtcNow);
+        _isPlaybackActive = false;
+        UpdateTitleScrollActivation();
         ResetPartParameters();
         StopPlaybackUiAnimation();
         _summaryFormatLabelOverride = null;
-        _lcdState.SetDisplayedText("NO SONG");
+        _lcdTitleText = "NO SONG";
+        ResetTitleScroll();
+        ConfigureCommentScroll(null, "READY");
+        ApplyShellLayout(animated: false);
         SyncLcdText();
         UpdateSummaryTexts();
         UpdatePartInfoPanel();
@@ -930,6 +1179,8 @@ public partial class MainWindow : Window
     {
         Array.Fill(_partLevelTargets, 0);
         Array.Fill(_partLevels, 0);
+        Array.Fill(_partPeakLevels, 0);
+        Array.Fill(_partPeakHoldMs, 0);
 
         RefreshLcdMatrix();
     }
@@ -951,11 +1202,13 @@ public partial class MainWindow : Window
 
     private void FlushPendingEventLog(object? sender, EventArgs e)
     {
+        var isLogTabActive = MainTabs.SelectedIndex == 2;
+        var flushBatchSize = isLogTabActive ? EventLogFlushBatchSize : Math.Max(8, EventLogFlushBatchSize / 4);
         var hasAdded = false;
         var shouldForceScroll = false;
         var addedCount = 0;
 
-        while (addedCount < EventLogFlushBatchSize && _pendingEventLog.TryDequeue(out var text))
+        while (addedCount < flushBatchSize && _pendingEventLog.TryDequeue(out var text))
         {
             _eventLog.Add(text);
             addedCount++;
@@ -983,7 +1236,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        var isLogTabActive = MainTabs.SelectedIndex == 2;
         if (shouldForceScroll || (isLogTabActive && ++_logScrollSkipCounter >= 4))
         {
             _logScrollSkipCounter = 0;
@@ -1198,16 +1450,251 @@ public partial class MainWindow : Window
         return Math.Clamp(velocity, 0, 127) / 127.0 * 100.0;
     }
 
+    private bool UpdateTitleScrollActivation()
+    {
+        var shouldScroll = _isPlaybackActive && IsLcdTitleOverflowing();
+        if (_isTitleScrollActive == shouldScroll)
+        {
+            return false;
+        }
+
+        _isTitleScrollActive = shouldScroll;
+        ResetTitleScroll();
+        return true;
+    }
+
+    private bool IsLcdTitleOverflowing()
+    {
+        var title = _lcdTitleText;
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        var viewportWidth = LcdLine1Text.ActualWidth;
+        if (viewportWidth <= 1)
+        {
+            return false;
+        }
+
+        var typeface = new Typeface(
+            LcdLine1Text.FontFamily,
+            LcdLine1Text.FontStyle,
+            LcdLine1Text.FontWeight,
+            LcdLine1Text.FontStretch);
+        var pixelsPerDip = VisualTreeHelper.GetDpi(LcdLine1Text).PixelsPerDip;
+        var formatted = new FormattedText(
+            title,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            LcdLine1Text.FontSize,
+            Brushes.Black,
+            pixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace > (viewportWidth + 0.5);
+    }
+
+    private void ResetTitleScroll(DateTimeOffset? nowUtc = null)
+    {
+        _lcdTitleScrollStartUtc = nowUtc ?? DateTimeOffset.UtcNow;
+    }
+
+    private string GetLcdTitleText(DateTimeOffset nowUtc)
+    {
+        if (!_isTitleScrollActive)
+        {
+            return _lcdTitleText;
+        }
+
+        if (string.IsNullOrEmpty(_lcdTitleText))
+        {
+            return string.Empty;
+        }
+
+        if (_lcdTitleScrollStartUtc == DateTimeOffset.MinValue)
+        {
+            _lcdTitleScrollStartUtc = nowUtc;
+        }
+
+        var elapsed = nowUtc - _lcdTitleScrollStartUtc;
+        if (elapsed <= LcdTitleScrollStartDelay)
+        {
+            return _lcdTitleText;
+        }
+
+        var scrollElapsed = elapsed - LcdTitleScrollStartDelay;
+        var scrollSource = _lcdTitleText + LcdTitleScrollGap;
+        var stepTicks = LcdTitleScrollStepInterval.Ticks;
+        var scrollTicks = scrollSource.Length * stepTicks;
+        var cycleTicks = scrollTicks + LcdTitleScrollLoopPause.Ticks;
+        var cycleElapsedTicks = scrollElapsed.Ticks % cycleTicks;
+        if (cycleElapsedTicks < 0)
+        {
+            cycleElapsedTicks += cycleTicks;
+        }
+
+        var offset = cycleElapsedTicks >= scrollTicks
+            ? 0
+            : (int)(cycleElapsedTicks / stepTicks);
+        var wrapped = scrollSource + _lcdTitleText;
+        return wrapped[offset..];
+    }
+
+    private void UpdateSc88DisplayLabel(string fallbackText)
+    {
+        var displayText = _lcdState.Line1Source;
+        LcdInstrumentNameText.Text = !_lcdState.HasDisplayTextOverride
+            ? fallbackText
+            : displayText;
+    }
+
     private void SyncLcdText()
     {
-        LcdLine1Text.Text = _lcdState.GetDisplayLine1(DateTimeOffset.UtcNow, _isTitleScrollActive).TrimEnd();
-        LcdLine2Text.Text = _lcdState.DisplayLine2.TrimEnd();
+        var nowUtc = DateTimeOffset.UtcNow;
+        LcdLine1Text.Text = GetLcdTitleText(nowUtc);
+
+        if (ShouldUseCommentScroll())
+        {
+            if (_lcdCommentLines.Count == 0)
+            {
+                _lcdCommentLines = [string.Empty];
+            }
+
+            var current = _lcdCommentLines[Math.Clamp(_lcdCommentLineIndex, 0, _lcdCommentLines.Count - 1)];
+            LcdLine2Text.Text = current;
+            LcdLine2TextNext.Text = GetNextCommentLine();
+            UpdateCommentScrollTimerState();
+            return;
+        }
+
+        UpdateCommentScrollTimerState();
+        LcdLine2Text.Text = string.Empty;
+        LcdLine2TextNext.Text = string.Empty;
+        ResetCommentVisualPosition();
+    }
+
+    private void ConfigureCommentScroll(string? multilineComment, string fallbackLine)
+    {
+        var lines = (multilineComment ?? string.Empty)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        if (lines.Count == 0)
+        {
+            lines.Add(fallbackLine.Trim());
+        }
+
+        _lcdCommentLines = lines;
+        _lcdCommentLineIndex = 0;
+        _lcdCommentPauseMs = LcdCommentScrollStartPauseMs;
+        _lcdCommentScrollOffset = 0;
+        UpdateCommentScrollMetrics();
+        ResetCommentVisualPosition();
+        UpdateCommentScrollTimerState();
+    }
+
+    private void LcdCommentScrollTick(object? sender, EventArgs e)
+    {
+        if (!ShouldUseCommentScroll())
+        {
+            _lcdCommentScrollTimer.Stop();
+            return;
+        }
+
+        var intervalMs = _lcdCommentScrollTimer.Interval.TotalMilliseconds;
+
+        if (_lcdCommentPauseMs > 0)
+        {
+            _lcdCommentPauseMs = Math.Max(0, _lcdCommentPauseMs - intervalMs);
+            return;
+        }
+
+        if (_lcdCommentLines.Count <= 1)
+        {
+            return;
+        }
+
+        if (_lcdCommentTransitionDistance <= 0 || _lcdCommentScrollStepPx <= 0)
+        {
+            UpdateCommentScrollMetrics();
+        }
+
+        if (_lcdCommentTransitionDistance <= 0 || _lcdCommentScrollStepPx <= 0)
+        {
+            return;
+        }
+
+        _lcdCommentScrollOffset += _lcdCommentScrollStepPx;
+        LcdLine2ScrollTransform.Y = -Math.Min(_lcdCommentScrollOffset, _lcdCommentTransitionDistance);
+
+        if (_lcdCommentScrollOffset < _lcdCommentTransitionDistance)
+        {
+            return;
+        }
+
+        _lcdCommentScrollOffset = 0;
+        _lcdCommentLineIndex = (_lcdCommentLineIndex + 1) % _lcdCommentLines.Count;
+        LcdLine2Text.Text = _lcdCommentLines[_lcdCommentLineIndex];
+        LcdLine2TextNext.Text = GetNextCommentLine();
+        LcdLine2ScrollTransform.Y = 0;
+        _lcdCommentPauseMs = _lcdCommentLineIndex == 0
+            ? LcdCommentScrollStartPauseMs
+            : LcdCommentScrollLinePauseMs;
+    }
+
+    private string GetNextCommentLine()
+    {
+        if (_lcdCommentLines.Count <= 1)
+        {
+            return string.Empty;
+        }
+
+        var next = (_lcdCommentLineIndex + 1) % _lcdCommentLines.Count;
+        return _lcdCommentLines[next];
+    }
+
+    private bool ShouldUseCommentScroll()
+    {
+        return _lcdCommentLines.Count > 0;
+    }
+
+    private void UpdateCommentScrollTimerState()
+    {
+        if (ShouldUseCommentScroll() && _lcdCommentLines.Count > 1)
+        {
+            if (!_lcdCommentScrollTimer.IsEnabled)
+            {
+                _lcdCommentScrollTimer.Start();
+            }
+            return;
+        }
+
+        _lcdCommentScrollTimer.Stop();
+    }
+
+    private void ResetCommentVisualPosition()
+    {
+        _lcdCommentScrollOffset = 0;
+        LcdLine2ScrollTransform.Y = 0;
+    }
+
+    private void UpdateCommentScrollMetrics()
+    {
+        var lineHeight = Math.Max(1.0, LcdLine2Text.ActualHeight);
+        _lcdCommentGapPx = Math.Round(lineHeight * LcdCommentGapPerChar);
+        _lcdCommentScrollStepPx = Math.Max(0.5, lineHeight * LcdCommentScrollStepPerChar);
+        _lcdCommentTransitionDistance = Math.Max(_lcdCommentScrollStepPx, Math.Round(lineHeight + _lcdCommentGapPx));
+        Canvas.SetTop(LcdLine2Text, 0);
+        Canvas.SetTop(LcdLine2TextNext, Math.Round(lineHeight + _lcdCommentGapPx));
+        LcdLine2TextNext.Margin = new Thickness(0);
     }
 
     private void RefreshLcdMatrix()
     {
         var nowUtc = DateTimeOffset.UtcNow;
-        var rows = _lcdState.GetCurrentRows(_partLevels, nowUtc, out _);
+        var rows = _lcdState.GetCurrentRows(_partLevels, _partPeakLevels, nowUtc, out _);
         for (var row = 0; row < LcdSize; row++)
         {
             var rowBits = rows[row];
@@ -1228,6 +1715,9 @@ public partial class MainWindow : Window
 
     private void RenderPianoRoll()
     {
+        _isPianoRollViewportMode = false;
+        _pianoRollViewportAnchorX = double.NaN;
+        _pianoRollMountedNoteShapes.Clear();
         PianoRollCanvas.Children.Clear();
         _pianoRollNoteVisuals.Clear();
         PianoRollOverlayPlayhead.Visibility = Visibility.Collapsed;
@@ -1333,7 +1823,6 @@ public partial class MainWindow : Window
 
         var hasSelectedPart = !_isAllDisplayMode;
         var selectedPart = Math.Clamp(_selectedPartIndex, 0, 15);
-
         foreach (var visual in _pianoRollNoteVisuals)
         {
             var isSelected = !hasSelectedPart || visual.Channel == selectedPart;
@@ -1452,6 +1941,11 @@ public partial class MainWindow : Window
 
     private void PianoRollScrollSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (_isPianoRollViewportMode)
+        {
+            UpdatePianoRollViewportWindow(force: true);
+        }
+
         UpdatePianoRollOverlayBounds();
 
         if (_playbackUiStopwatch.IsRunning && _playbackTotalMilliseconds > 0)
@@ -1470,6 +1964,11 @@ public partial class MainWindow : Window
 
     private void PianoRollScrollScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        if (_isPianoRollViewportMode)
+        {
+            UpdatePianoRollViewportWindow(force: false);
+        }
+
         if (_isPianoRollHardwareScrollEnabled)
         {
             return;
@@ -1546,17 +2045,24 @@ public partial class MainWindow : Window
             _loadedFileScrollTimer.Stop();
             _loadedFileScrollOffset = 0;
             _loadedFileScrollPauseMs = 0;
+            _loadedFileScrollLastTickMs = 0;
             Canvas.SetLeft(LoadedFileText, 0);
             return;
         }
 
+        var nowMs = Environment.TickCount64;
+        var deltaMs = _loadedFileScrollLastTickMs <= 0
+            ? _loadedFileScrollTimer.Interval.TotalMilliseconds
+            : Math.Max(1, nowMs - _loadedFileScrollLastTickMs);
+        _loadedFileScrollLastTickMs = nowMs;
+
         if (_loadedFileScrollPauseMs > 0)
         {
-            _loadedFileScrollPauseMs = Math.Max(0, _loadedFileScrollPauseMs - _loadedFileScrollTimer.Interval.TotalMilliseconds);
+            _loadedFileScrollPauseMs = Math.Max(0, _loadedFileScrollPauseMs - deltaMs);
             return;
         }
 
-        _loadedFileScrollOffset -= LoadedFileScrollSpeedPerTick;
+        _loadedFileScrollOffset -= LoadedFileScrollSpeedPerSecond * (deltaMs / 1000.0);
         var wrapDistance = overflow + LoadedFileScrollGap;
         if (-_loadedFileScrollOffset >= wrapDistance)
         {
@@ -1573,6 +2079,7 @@ public partial class MainWindow : Window
         {
             _loadedFileScrollOffset = 0;
             _loadedFileScrollPauseMs = LoadedFileScrollPauseMsDefault;
+            _loadedFileScrollLastTickMs = 0;
             Canvas.SetLeft(LoadedFileText, 0);
 
             var overflow = LoadedFileText.ActualWidth - LoadedFileViewport.ActualWidth;
@@ -1600,6 +2107,8 @@ public partial class MainWindow : Window
         BuildPlaybackTempoTimeline(_plan);
         Interlocked.Exchange(ref _playbackHintTick, 0);
         _playbackUiStopwatch.Restart();
+        _playbackUiLastElapsedMs = 0;
+        EnablePianoRollViewportMode();
         StartPianoRollHardwareScroll();
         _playbackUiTimer.Start();
     }
@@ -1608,9 +2117,11 @@ public partial class MainWindow : Window
     {
         _playbackUiTimer.Stop();
         StopPianoRollHardwareScroll(applyOffsetToScrollViewer: true);
+        DisablePianoRollViewportMode();
         _playbackUiStopwatch.Reset();
         _playbackTotalMilliseconds = 0;
         _playbackTotalTicksForUi = 0;
+        _playbackUiLastElapsedMs = 0;
         Interlocked.Exchange(ref _playbackHintTick, 0);
         _playbackTempoSegments.Clear();
         ClearPendingUiEvents();
@@ -1661,6 +2172,114 @@ public partial class MainWindow : Window
         _pianoRollAutoScrollTransform.X = 0;
     }
 
+    private void EnablePianoRollViewportMode()
+    {
+        if (_isPianoRollViewportMode || _pianoRollNoteVisuals.Count == 0)
+        {
+            return;
+        }
+
+        _isPianoRollViewportMode = true;
+        _pianoRollViewportAnchorX = double.NaN;
+        _pianoRollMountedNoteShapes.Clear();
+        foreach (var visual in _pianoRollNoteVisuals)
+        {
+            _pianoRollMountedNoteShapes.Add(visual.Shape);
+        }
+
+        UpdatePianoRollViewportWindow(force: true);
+    }
+
+    private void DisablePianoRollViewportMode()
+    {
+        if (!_isPianoRollViewportMode)
+        {
+            return;
+        }
+
+        _isPianoRollViewportMode = false;
+        _pianoRollViewportAnchorX = double.NaN;
+
+        foreach (var visual in _pianoRollNoteVisuals)
+        {
+            if (!_pianoRollMountedNoteShapes.Contains(visual.Shape))
+            {
+                PianoRollCanvas.Children.Add(visual.Shape);
+            }
+        }
+
+        _pianoRollMountedNoteShapes.Clear();
+        UpdatePianoRollPartEmphasis();
+    }
+
+    private void UpdatePianoRollViewportWindow(bool force)
+    {
+        if (!_isPianoRollViewportMode || _pianoRollNoteVisuals.Count == 0)
+        {
+            return;
+        }
+
+        var viewportWidth = PianoRollScroll.ViewportWidth;
+        if (viewportWidth <= 0)
+        {
+            viewportWidth = PianoRollScroll.ActualWidth;
+        }
+
+        if (viewportWidth <= 0)
+        {
+            return;
+        }
+
+        var offset = _isPianoRollHardwareScrollEnabled
+            ? _pianoRollScrollCurrentOffset
+            : PianoRollScroll.HorizontalOffset;
+        offset = Math.Max(0.0, offset);
+        var chunkWidth = Math.Max(800.0, viewportWidth * 1.25);
+        var anchor = Math.Floor(offset / chunkWidth) * chunkWidth;
+
+        if (!force && !double.IsNaN(_pianoRollViewportAnchorX) && Math.Abs(anchor - _pianoRollViewportAnchorX) < 0.1)
+        {
+            return;
+        }
+
+        _pianoRollViewportAnchorX = anchor;
+        var startX = Math.Max(0.0, anchor - chunkWidth);
+        var endX = anchor + chunkWidth * 3.0;
+        var nextMounted = new HashSet<Rectangle>();
+
+        foreach (var visual in _pianoRollNoteVisuals)
+        {
+            var x = Canvas.GetLeft(visual.Shape);
+            var right = x + visual.Shape.Width;
+            var shouldMount = right >= startX && x <= endX;
+            var wasMounted = _pianoRollMountedNoteShapes.Contains(visual.Shape);
+
+            if (shouldMount)
+            {
+                nextMounted.Add(visual.Shape);
+                if (!wasMounted)
+                {
+                    PianoRollCanvas.Children.Add(visual.Shape);
+                }
+
+                continue;
+            }
+
+            if (wasMounted)
+            {
+                PianoRollCanvas.Children.Remove(visual.Shape);
+            }
+        }
+
+        _pianoRollMountedNoteShapes.Clear();
+        foreach (var shape in nextMounted)
+        {
+            _pianoRollMountedNoteShapes.Add(shape);
+        }
+
+        UpdatePianoRollPartEmphasis();
+    }
+
     private void OnPianoRollRendering(object? sender, EventArgs e)
     {
         if (!_isPianoRollHardwareScrollEnabled)
@@ -1686,6 +2305,10 @@ public partial class MainWindow : Window
 
         var viewportOffset = PianoRollScroll.HorizontalOffset;
         _pianoRollAutoScrollTransform.X = viewportOffset - _pianoRollScrollCurrentOffset;
+        if (_isPianoRollViewportMode)
+        {
+            UpdatePianoRollViewportWindow(force: false);
+        }
 
         if (_playbackUiStopwatch.IsRunning && _playbackTotalMilliseconds > 0)
         {
@@ -1696,6 +2319,12 @@ public partial class MainWindow : Window
     private void PlaybackUiTick(object? sender, EventArgs e)
     {
         DrainPendingUiEvents();
+        var elapsedMs = _playbackUiStopwatch.Elapsed.TotalMilliseconds;
+        var deltaMs = _playbackUiLastElapsedMs <= 0
+            ? _playbackUiTimer.Interval.TotalMilliseconds
+            : Math.Max(0.5, elapsedMs - _playbackUiLastElapsedMs);
+        _playbackUiLastElapsedMs = elapsedMs;
+        DecayMeters(deltaMs);
 
         if (_playbackTotalMilliseconds <= 0)
         {
@@ -1711,8 +2340,14 @@ public partial class MainWindow : Window
         var processed = 0;
         while (processed < MaxUiEventsPerFrame && _pendingUiEvents.TryDequeue(out var e))
         {
-            UpdateDisplayFromEvent(e);
+            UpdateDisplayFromEvent(e, refreshVisuals: false);
             processed++;
+        }
+
+        if (processed > 0)
+        {
+            UpdatePartInfoPanel();
+            RefreshLcdMatrix();
         }
     }
 
@@ -1912,7 +2547,7 @@ public partial class MainWindow : Window
         {
             LcdPartValueText.Text = "ALL";
             LcdInstrumentValueText.Text = "===";
-            LcdInstrumentNameText.Text = "-SOUND Canvas-";
+            UpdateSc88DisplayLabel("-SOUND Canvas-");
 
             LcdLevelValueText.Text = $"{GetAverage(_partVolume):000}";
             LcdPanValueText.Text = $"{GetAverage(_partPan):000}";
@@ -1929,9 +2564,9 @@ public partial class MainWindow : Window
 
         LcdPartValueText.Text = $"{part + 1:00}";
         LcdInstrumentValueText.Text = $"{program + 1:000}";
-        LcdInstrumentNameText.Text = _partMuted[part]
+        UpdateSc88DisplayLabel(_partMuted[part]
             ? $"{instrumentName} [MUTE]"
-            : instrumentName;
+            : instrumentName);
 
         LcdLevelValueText.Text = $"{_partVolume[part]:000}";
         LcdPanValueText.Text = $"{_partPan[part]:000}";

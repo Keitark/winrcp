@@ -54,16 +54,49 @@ public sealed class RcpParser
         const int userSysExOffset = 0x406;
         const int trackDataOffset = 0x586;
 
-        var title = DecodeText(data[titleOffset..(titleOffset + titleLength)]);
+        var titleBytes = data[titleOffset..(titleOffset + titleLength)];
+        var title = DecodeText(titleBytes);
         if (options.EnableExtendedTitle24)
         {
             var extensionBytes = data[extendedTitleOffset..(extendedTitleOffset + extendedTitleLength)];
-            if (LooksLikeExtendedTitleBytes(extensionBytes))
+            var titleContentLength = titleBytes.IndexOf((byte)0);
+            if (titleContentLength < 0)
             {
-                var extension = DecodeTextPreserveLeading(extensionBytes);
-                if (HasMeaningfulText(extension))
+                titleContentLength = titleBytes.Length;
+            }
+
+            var titleContentBytes = titleBytes[..titleContentLength];
+            var extensionLooksText = LooksLikeExtendedTitleBytes(extensionBytes);
+            var extensionText = extensionLooksText ? DecodeTextPreserveLeading(extensionBytes) : string.Empty;
+            var shouldAppendExtension = extensionLooksText && HasMeaningfulText(extensionText);
+            var hasSplitShiftJisBoundary = EndsWithDanglingShiftJisLeadByte(titleContentBytes) &&
+                                           extensionBytes.Length > 0 &&
+                                           IsShiftJisTrailByte(extensionBytes[0]);
+
+            if (shouldAppendExtension)
+            {
+                // Decode merged bytes so Shift-JIS characters split between title and extension
+                // fields are reconstructed correctly.
+                var merged = new byte[titleContentBytes.Length + extensionBytes.Length];
+                titleContentBytes.CopyTo(merged);
+                extensionBytes.CopyTo(merged.AsSpan(titleContentBytes.Length));
+                var mergedTitle = DecodeText(merged);
+                if (HasMeaningfulText(mergedTitle))
                 {
-                    title += extension;
+                    title = mergedTitle;
+                }
+            }
+            else if (hasSplitShiftJisBoundary)
+            {
+                // Some files split one Shift-JIS character exactly at 40-byte title boundary.
+                // Even when extension text is not usable, consume one trail byte to avoid mojibake.
+                var merged = new byte[titleContentBytes.Length + 1];
+                titleContentBytes.CopyTo(merged);
+                merged[^1] = extensionBytes[0];
+                var repairedTitle = DecodeText(merged);
+                if (HasMeaningfulText(repairedTitle))
+                {
+                    title = repairedTitle;
                 }
             }
         }
@@ -73,11 +106,12 @@ public sealed class RcpParser
         var tempo = data[0x1C1];
         var beatN = data[0x1C2];
         var beatD = data[0x1C3];
+        var globalTransposition = unchecked((sbyte)data[0x1C5]);
         var cm6 = DecodeText(data[cm6Offset..(cm6Offset + 0x10)]);
         var gsd = DecodeText(data[gsdOffset..(gsdOffset + 0x10)]);
         var declaredTrackCount = data[trackCountOffset];
         var userEx = ParseUserExclusive(data[userSysExOffset..(userSysExOffset + 0x30 * 8)]);
-        var tracks = ParseTracksRcp(data[trackDataOffset..], declaredTrackCount, options);
+        var tracks = ParseTracksRcp(data[trackDataOffset..], declaredTrackCount, globalTransposition, options);
 
         return new RcpSong
         {
@@ -88,6 +122,7 @@ public sealed class RcpParser
             TempoBpm = Math.Max((int)tempo, 1),
             BeatNumerator = Math.Max((int)beatN, 1),
             BeatDenominator = Math.Max((int)beatD, 1),
+            GlobalTransposition = globalTransposition,
             Cm6FileName = string.IsNullOrWhiteSpace(cm6) ? null : cm6,
             GsdAFileName = string.IsNullOrWhiteSpace(gsd) ? null : gsd,
             GsdBFileName = null,
@@ -126,11 +161,12 @@ public sealed class RcpParser
         var tempo = ReadUInt16(data, tempoOffset);
         var beatN = data[beatNOffset];
         var beatD = data[beatDOffset];
+        var globalTransposition = unchecked((sbyte)data[0x211]);
         var gsdA = DecodeText(data[gsdAOffset..(gsdAOffset + 0x10)]);
         var gsdB = DecodeText(data[gsdBOffset..(gsdBOffset + 0x10)]);
         var cm6 = DecodeText(data[cm6Offset..(cm6Offset + 0x10)]);
         var userEx = ParseUserExclusive(data[userSysExOffset..(userSysExOffset + 0x30 * 8)]);
-        var tracks = ParseTracksG36(data[trackDataOffset..], declaredTrackCount, options);
+        var tracks = ParseTracksG36(data[trackDataOffset..], declaredTrackCount, globalTransposition, options);
 
         return new RcpSong
         {
@@ -141,6 +177,7 @@ public sealed class RcpParser
             TempoBpm = Math.Max((int)tempo, 1),
             BeatNumerator = Math.Max((int)beatN, 1),
             BeatDenominator = Math.Max((int)beatD, 1),
+            GlobalTransposition = globalTransposition,
             Cm6FileName = string.IsNullOrWhiteSpace(cm6) ? null : cm6,
             GsdAFileName = string.IsNullOrWhiteSpace(gsdA) ? null : gsdA,
             GsdBFileName = string.IsNullOrWhiteSpace(gsdB) ? null : gsdB,
@@ -167,7 +204,11 @@ public sealed class RcpParser
         return result;
     }
 
-    private static IReadOnlyList<RcpTrack> ParseTracksRcp(ReadOnlySpan<byte> trackData, int declaredTrackCount, RcpParserOptions options)
+    private static IReadOnlyList<RcpTrack> ParseTracksRcp(
+        ReadOnlySpan<byte> trackData,
+        int declaredTrackCount,
+        int globalTransposition,
+        RcpParserOptions options)
     {
         var tracks = new List<RcpTrack>();
         var offset = 0;
@@ -175,15 +216,34 @@ public sealed class RcpParser
 
         while (offset + 0x2C <= trackData.Length && tracks.Count < indexLimit)
         {
-            var length = ReadUInt16(trackData, offset);
-            if (length <= 0x2C || offset + length > trackData.Length)
+            var length = (int)ReadUInt16(trackData, offset);
+            if (length <= 0x2C)
             {
                 break;
             }
 
+            if (offset + length > trackData.Length)
+            {
+                // Some legacy files declare an oversized final track length.
+                // Salvage the declared last track by consuming the remaining bytes.
+                var isDeclaredLastTrack = declaredTrackCount > 0 && tracks.Count + 1 >= indexLimit;
+                var remaining = trackData.Length - offset;
+                if (!isDeclaredLastTrack || remaining <= 0x2C)
+                {
+                    break;
+                }
+
+                length = remaining;
+            }
+
             var trackSpan = trackData.Slice(offset, length);
             var trackId = trackSpan[2];
-            var channel = NormalizeChannel(trackSpan[4]);
+            var rhythmMode = trackSpan[3];
+            var channelRaw = trackSpan[4];
+            var channel = NormalizeChannel(channelRaw);
+            var isDummyChannel = (channelRaw & 0x80) != 0;
+            var transposition = DecodeTrackTransposition(trackSpan[5], globalTransposition);
+            var startTick = unchecked((sbyte)trackSpan[6]);
             var mute = trackSpan[7] == 0x01;
             var trackName = DecodeText(trackSpan.Slice(8, 0x24));
             var events = new List<RcpEvent>();
@@ -218,6 +278,10 @@ public sealed class RcpParser
                 Name = string.IsNullOrWhiteSpace(trackName) ? $"Track {tracks.Count + 1}" : trackName,
                 DefaultChannel = channel,
                 IsMuted = mute,
+                RhythmMode = rhythmMode,
+                TrackTransposition = transposition,
+                StartTick = startTick,
+                IsDummyChannel = isDummyChannel,
                 Events = events
             });
 
@@ -227,7 +291,11 @@ public sealed class RcpParser
         return tracks;
     }
 
-    private static IReadOnlyList<RcpTrack> ParseTracksG36(ReadOnlySpan<byte> trackData, int declaredTrackCount, RcpParserOptions options)
+    private static IReadOnlyList<RcpTrack> ParseTracksG36(
+        ReadOnlySpan<byte> trackData,
+        int declaredTrackCount,
+        int globalTransposition,
+        RcpParserOptions options)
     {
         var tracks = new List<RcpTrack>();
         var offset = 0;
@@ -236,14 +304,32 @@ public sealed class RcpParser
         while (offset + 0x2E <= trackData.Length && tracks.Count < indexLimit)
         {
             var length = ReadInt32(trackData, offset);
-            if (length <= 0x2E || offset + length > trackData.Length)
+            if (length <= 0x2E)
             {
                 break;
             }
 
+            if (offset + length > trackData.Length)
+            {
+                // Keep behavior consistent with RCP v2: salvage only the declared last track.
+                var isDeclaredLastTrack = declaredTrackCount > 0 && tracks.Count + 1 >= indexLimit;
+                var remaining = trackData.Length - offset;
+                if (!isDeclaredLastTrack || remaining <= 0x2E)
+                {
+                    break;
+                }
+
+                length = remaining;
+            }
+
             var trackSpan = trackData.Slice(offset, length);
             var trackId = trackSpan[4];
-            var channel = NormalizeChannel(trackSpan[6]);
+            var rhythmMode = trackSpan[5];
+            var channelRaw = trackSpan[6];
+            var channel = NormalizeChannel(channelRaw);
+            var isDummyChannel = (channelRaw & 0x80) != 0;
+            var transposition = DecodeTrackTransposition(trackSpan[7], globalTransposition);
+            var startTick = unchecked((sbyte)trackSpan[8]);
             var mute = trackSpan[9] == 0x01;
             var trackName = DecodeText(trackSpan.Slice(10, 0x24));
             var events = new List<RcpEvent>();
@@ -278,6 +364,10 @@ public sealed class RcpParser
                 Name = string.IsNullOrWhiteSpace(trackName) ? $"Track {tracks.Count + 1}" : trackName,
                 DefaultChannel = channel,
                 IsMuted = mute,
+                RhythmMode = rhythmMode,
+                TrackTransposition = transposition,
+                StartTick = startTick,
+                IsDummyChannel = isDummyChannel,
                 Events = events
             });
 
@@ -375,6 +465,33 @@ public sealed class RcpParser
         return value is >= 0x40 and <= 0x7E or >= 0x80 and <= 0xFC;
     }
 
+    private static bool EndsWithDanglingShiftJisLeadByte(ReadOnlySpan<byte> bytes)
+    {
+        var length = bytes.IndexOf((byte)0);
+        if (length < 0)
+        {
+            length = bytes.Length;
+        }
+
+        var pendingLead = false;
+        for (var i = 0; i < length; i++)
+        {
+            var b = bytes[i];
+            if (pendingLead)
+            {
+                pendingLead = false;
+                if (IsShiftJisTrailByte(b))
+                {
+                    continue;
+                }
+            }
+
+            pendingLead = IsShiftJisLeadByte(b);
+        }
+
+        return pendingLead;
+    }
+
     private static bool HasMeaningfulText(string value)
     {
         foreach (var c in value)
@@ -415,6 +532,17 @@ public sealed class RcpParser
         }
 
         return raw & 0x0F;
+    }
+
+    private static int DecodeTrackTransposition(byte raw, int globalTransposition)
+    {
+        if ((raw & 0x80) != 0)
+        {
+            return 0;
+        }
+
+        var signed = (raw & 0x40) != 0 ? raw - 0x80 : raw;
+        return signed + globalTransposition;
     }
 
     private static ushort ReadUInt16(ReadOnlySpan<byte> data, int offset)

@@ -31,8 +31,12 @@ public sealed class RcpParserTests
         var plan = builder.Build(song);
 
         Assert.NotEmpty(plan.MidiEvents);
-        Assert.Contains(plan.MidiEvents, e => (e.Packet.ShortMessage & 0xF0) == 0x90);
-        Assert.Contains(plan.MidiEvents, e => (e.Packet.ShortMessage & 0xF0) == 0x80);
+        Assert.Contains(plan.MidiEvents, e =>
+            (e.Packet.ShortMessage & 0xF0) == 0x90 &&
+            ((e.Packet.ShortMessage >> 16) & 0x7F) > 0);
+        Assert.Contains(plan.MidiEvents, e =>
+            (e.Packet.ShortMessage & 0xF0) == 0x90 &&
+            ((e.Packet.ShortMessage >> 16) & 0x7F) == 0);
     }
 
     [Fact]
@@ -75,6 +79,42 @@ public sealed class RcpParserTests
         var song = parser.Parse(BuildMinimalRcpWithTitleExtensionBytes(title40, extensionBytes));
 
         Assert.Equal(title40, song.Title);
+    }
+
+    [Fact]
+    public void Parse_RcpV2_ExtendedTitle_ReconstructsSplitShiftJisCharacterAcrossBoundary()
+    {
+        var parser = new RcpParser();
+        var sjis = Encoding.GetEncoding(932);
+        var titleRaw = new byte[0x28];
+        var extRaw = new byte[0x18];
+        Array.Fill(titleRaw, (byte)0x20);
+
+        // Build title bytes ending with a dangling Shift-JIS lead byte.
+        var prefix = sjis.GetBytes("HAPPY WAKE UP! [観月 あ");
+        Array.Copy(prefix, 0, titleRaw, 0, Math.Min(prefix.Length, titleRaw.Length - 1));
+        titleRaw[^1] = 0x82; // dangling lead byte
+
+        // First extension byte closes the dangling lead (0x82,0xE8 = ら).
+        extRaw[0] = 0xE8;
+        var tail = sjis.GetBytes("さ]  By けけほ");
+        Array.Copy(tail, 0, extRaw, 1, Math.Min(tail.Length, extRaw.Length - 1));
+
+        var song = parser.Parse(BuildMinimalRcpWithRawTitleExtensionBytes(titleRaw, extRaw));
+
+        var combined = new byte[titleRaw.Length + extRaw.Length];
+        Array.Copy(titleRaw, 0, combined, 0, titleRaw.Length);
+        Array.Copy(extRaw, 0, combined, titleRaw.Length, extRaw.Length);
+        var expected = sjis.GetString(combined);
+        var terminator = expected.IndexOf('\0');
+        if (terminator >= 0)
+        {
+            expected = expected[..terminator];
+        }
+
+        expected = expected.Trim();
+        Assert.Equal(expected, song.Title);
+        Assert.DoesNotContain("閧ｳ", song.Title);
     }
 
     private static byte[] BuildMinimalRcp()
@@ -140,6 +180,16 @@ public sealed class RcpParserTests
         Array.Clear(data, 0x48, 0x18);
 
         var titleRaw = Encoding.GetEncoding(932).GetBytes(title40);
+        Array.Copy(titleRaw, 0, data, 0x20, Math.Min(titleRaw.Length, 0x28));
+        Array.Copy(extBytes, 0, data, 0x48, Math.Min(extBytes.Length, 0x18));
+        return data;
+    }
+
+    private static byte[] BuildMinimalRcpWithRawTitleExtensionBytes(byte[] titleRaw, byte[] extBytes)
+    {
+        var data = BuildMinimalRcp();
+        Array.Clear(data, 0x20, 0x28);
+        Array.Clear(data, 0x48, 0x18);
         Array.Copy(titleRaw, 0, data, 0x20, Math.Min(titleRaw.Length, 0x28));
         Array.Copy(extBytes, 0, data, 0x48, Math.Min(extBytes.Length, 0x18));
         return data;

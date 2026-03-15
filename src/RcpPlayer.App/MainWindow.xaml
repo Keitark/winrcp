@@ -282,7 +282,7 @@
                 </Border.Background>
                 <Grid Margin="0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="42"/>
+                    <RowDefinition Height="0"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -293,6 +293,7 @@
                         Margin="0,0,0,9"
                         CornerRadius="12,12,0,0"
                         Background="#1E1812"
+                        Visibility="Collapsed"
                         MouseLeftButtonDown="TopDragRegionMouseLeftButtonDown">
                     <Grid Margin="11,8,9,8">
                         <Grid.ColumnDefinitions>
@@ -354,11 +355,60 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Text="WinRCP"
-                                       Grid.ColumnSpan="2"
-                                       FontFamily="Bahnschrift SemiBold"
-                                       FontSize="12"
-                                       Foreground="#D7CB9E"/>
+                            <Border x:Name="IntegratedChromeBar"
+                                    Grid.ColumnSpan="2"
+                                    Padding="0,0,0,2"
+                                    Background="Transparent"
+                                    MouseLeftButtonDown="TopDragRegionMouseLeftButtonDown">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="WinRCP"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Bahnschrift SemiBold"
+                                               FontSize="12"
+                                               Foreground="#D7CB9E"/>
+
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal">
+                                        <Button Width="25"
+                                                Height="21"
+                                                Margin="0,0,4,0"
+                                                FontFamily="Consolas"
+                                                FontSize="11"
+                                                FontWeight="Bold"
+                                                Foreground="#F0E4CF"
+                                                Background="#3A2C1C"
+                                                BorderBrush="#6E5435"
+                                                Content="_"
+                                                Click="MinimizeWindowClick"/>
+                                        <Button Width="25"
+                                                Height="21"
+                                                Margin="0,0,4,0"
+                                                FontFamily="Consolas"
+                                                FontSize="10"
+                                                FontWeight="Bold"
+                                                Foreground="#F0E4CF"
+                                                Background="#4A3923"
+                                                BorderBrush="#6E5435"
+                                                Content="[]"
+                                                Click="ToggleWindowStateClick"/>
+                                        <Button Width="25"
+                                                Height="21"
+                                                FontFamily="Consolas"
+                                                FontSize="10"
+                                                FontWeight="Bold"
+                                                Foreground="#F6EFE6"
+                                                Background="#7E2B23"
+                                                BorderBrush="#A04D44"
+                                                Content="X"
+                                                Click="CloseWindowClick"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
                             <Border Grid.Row="1"
                                     Grid.Column="0"
@@ -558,7 +608,7 @@
 
                             <Grid Grid.Row="1"
                                   Grid.Column="1"
-                                  Margin="5,30,0,0"
+                                  Margin="5,18,0,0"
                                   Height="143"
                                   VerticalAlignment="Top">
                                 <Grid.ColumnDefinitions>

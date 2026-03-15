@@ -369,6 +369,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (FindNamedAncestor(e.OriginalSource as DependencyObject, "IntegratedChromeBar") is not null)
+        {
+            return;
+        }
+
         if (!_isCompactShell)
         {
             _expandedWindowHeight = Math.Max(_expandedWindowHeight, ActualHeight);
@@ -381,6 +386,13 @@ public partial class MainWindow : Window
     private void MinimizeWindowClick(object sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
+    }
+
+    private void ToggleWindowStateClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
     }
 
     private void CloseWindowClick(object sender, RoutedEventArgs e)
@@ -944,6 +956,22 @@ public partial class MainWindow : Window
             if (current is T match)
             {
                 return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static FrameworkElement? FindNamedAncestor(DependencyObject? origin, string name)
+    {
+        var current = origin;
+        while (current is not null)
+        {
+            if (current is FrameworkElement element && string.Equals(element.Name, name, StringComparison.Ordinal))
+            {
+                return element;
             }
 
             current = VisualTreeHelper.GetParent(current);

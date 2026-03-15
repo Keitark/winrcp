@@ -337,7 +337,7 @@
 
                 <Grid x:Name="PerformanceMonitorSection"
                       Grid.Row="1"
-                      Margin="11,0,11,9"
+                      Margin="0"
                       Cursor="Hand"
                       MouseLeftButtonUp="PerformanceMonitorSectionMouseLeftButtonUp">
                     <Border Padding="9"
@@ -702,7 +702,7 @@
 
                 <Border x:Name="CommandPanel"
                         Grid.Row="2"
-                        Margin="11,0,11,9"
+                        Margin="0,2,0,2"
                         Padding="9"
                         CornerRadius="6"
                         BorderBrush="#87785C"
@@ -784,7 +784,7 @@
                     </Grid>
                 </Border>
 
-                <Grid x:Name="MainTabsHost" Grid.Row="3" Margin="11,0,11,0">
+                <Grid x:Name="MainTabsHost" Grid.Row="3" Margin="0">
                     <Grid.RenderTransform>
                         <TranslateTransform x:Name="MainTabsHostTransform"/>
                     </Grid.RenderTransform>
@@ -871,8 +871,8 @@
 
                 <Border x:Name="ProgressPanel"
                         Grid.Row="4"
-                        Margin="11,9,11,11"
-                        Padding="8"
+                        Margin="0,2,0,0"
+                        Padding="6"
                         CornerRadius="6"
                         BorderBrush="#3C4A39"
                         BorderThickness="1"
@@ -889,49 +889,48 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <ProgressBar x:Name="PlayProgress"
-                                     Height="14"
+                                     Height="12"
                                      Maximum="100"
                                      Style="{StaticResource AmberProgressBarStyle}"
                                      VerticalAlignment="Center"/>
                         <TextBlock x:Name="StatusText"
                                    Grid.Column="1"
-                                   Margin="12,0,0,0"
-                                   VerticalAlignment="Center"
-                                   FontFamily="Consolas"
-                                   FontSize="10"
-                                   Foreground="#D6AD72"
+                                   Visibility="Collapsed"
                                    Text="Ready"/>
                         <Button Grid.Column="2"
-                                Margin="12,0,0,0"
-                                Width="64"
-                                Height="24"
-                                FontFamily="Bahnschrift SemiBold"
+                                Margin="8,0,0,0"
+                                Width="24"
+                                Height="22"
+                                Padding="0"
+                                FontFamily="Consolas"
                                 Style="{StaticResource AmberCommandButtonStyle}"
-                                Content="Open"
+                                Content="..."
                                 Click="OpenFileClick"/>
                         <Button x:Name="PlayButton"
                                 Grid.Column="3"
-                                Margin="8,0,0,0"
-                                Width="64"
-                                Height="24"
-                                FontFamily="Bahnschrift SemiBold"
+                                Margin="4,0,0,0"
+                                Width="24"
+                                Height="22"
+                                Padding="0"
+                                FontFamily="Consolas"
                                 Style="{StaticResource AmberCommandButtonStyle}"
                                 Background="#B9822F"
                                 BorderBrush="#8A5C21"
                                 Foreground="#1F160B"
-                                Content="Play"
+                                Content=">"
                                 Click="PlayClick"/>
                         <Button x:Name="StopButton"
                                 Grid.Column="4"
-                                Margin="8,0,0,0"
-                                Width="64"
-                                Height="24"
-                                FontFamily="Bahnschrift SemiBold"
+                                Margin="4,0,0,0"
+                                Width="24"
+                                Height="22"
+                                Padding="0"
+                                FontFamily="Consolas"
                                 Style="{StaticResource AmberCommandButtonStyle}"
                                 Background="#A8752D"
                                 BorderBrush="#7A5320"
                                 Foreground="#1F160B"
-                                Content="Stop"
+                                Content="[]"
                                 IsEnabled="False"
                                 Click="StopClick"/>
                     </Grid>

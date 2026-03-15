@@ -20,6 +20,10 @@
 - .NET 9 SDK
 - A MIDI output target available through Windows MIDI APIs
 
+## Releases
+- GitHub Releases provide a self-contained `win-x64` package for users who just want to run the app.
+- Building from source requires the .NET 9 SDK, but the packaged release asset does not.
+
 ## Quick Start
 1. Build the application:
 

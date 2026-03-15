@@ -337,6 +337,8 @@
                       Grid.Row="1"
                       Margin="0"
                       Cursor="Hand"
+                      MouseLeftButtonDown="PerformanceMonitorSectionMouseLeftButtonDown"
+                      MouseMove="PerformanceMonitorSectionMouseMove"
                       MouseLeftButtonUp="PerformanceMonitorSectionMouseLeftButtonUp">
                     <Border Padding="9"
                             CornerRadius="8"

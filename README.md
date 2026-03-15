@@ -13,7 +13,7 @@
 
 ## Current Status
 - The desktop app currently builds and runs as a local Windows player.
-- Core playback behavior is being refined around observed x68-compatible expectations.
+- Core playback behavior is being refined for practical compatibility and stable local playback.
 
 ## Requirements
 - Windows 10/11

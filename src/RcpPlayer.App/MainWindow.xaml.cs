@@ -859,7 +859,7 @@ public partial class MainWindow : Window
         }
 
         var showLowerPanels = !_isCompactShell;
-        var showProgressPanel = !_isCompactShell || _isPlaybackActive;
+        var showProgressPanel = true;
 
         AnimateShellPanel(CommandPanel, CommandPanelTransform, showLowerPanels, animated, ShellSlideOffset);
         AnimateShellPanel(MainTabsHost, MainTabsHostTransform, showLowerPanels, animated, ShellSlideOffset * 1.2);

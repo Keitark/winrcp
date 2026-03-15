@@ -159,6 +159,8 @@ public partial class MainWindow : Window
     private bool _isCompactShell = true;
     private bool _shellLayoutInitialized;
     private double _expandedWindowHeight;
+    private bool _isPerformanceMonitorClickCandidate;
+    private Point _performanceMonitorPointerDownPoint;
 
     public MainWindow()
     {
@@ -363,17 +365,53 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PerformanceMonitorSectionMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void PerformanceMonitorSectionMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null)
+        if (IsPerformanceMonitorInteractiveOrigin(e.OriginalSource as DependencyObject))
+        {
+            _isPerformanceMonitorClickCandidate = false;
+            return;
+        }
+
+        _isPerformanceMonitorClickCandidate = true;
+        _performanceMonitorPointerDownPoint = e.GetPosition(this);
+    }
+
+    private void PerformanceMonitorSectionMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isPerformanceMonitorClickCandidate || e.LeftButton != MouseButtonState.Pressed)
         {
             return;
         }
 
-        if (FindNamedAncestor(e.OriginalSource as DependencyObject, "IntegratedChromeBar") is not null)
+        var currentPoint = e.GetPosition(this);
+        var deltaX = Math.Abs(currentPoint.X - _performanceMonitorPointerDownPoint.X);
+        var deltaY = Math.Abs(currentPoint.Y - _performanceMonitorPointerDownPoint.Y);
+        if (deltaX < SystemParameters.MinimumHorizontalDragDistance &&
+            deltaY < SystemParameters.MinimumVerticalDragDistance)
         {
             return;
         }
+
+        _isPerformanceMonitorClickCandidate = false;
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void PerformanceMonitorSectionMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isPerformanceMonitorClickCandidate || IsPerformanceMonitorInteractiveOrigin(e.OriginalSource as DependencyObject))
+        {
+            _isPerformanceMonitorClickCandidate = false;
+            return;
+        }
+
+        _isPerformanceMonitorClickCandidate = false;
 
         if (!_isCompactShell)
         {
@@ -382,6 +420,13 @@ public partial class MainWindow : Window
 
         _isCompactShell = !_isCompactShell;
         ApplyShellLayout(animated: true);
+    }
+
+    private bool IsPerformanceMonitorInteractiveOrigin(DependencyObject? origin)
+    {
+        return FindAncestor<Button>(origin) is not null ||
+               FindAncestor<ComboBox>(origin) is not null ||
+               FindNamedAncestor(origin, "IntegratedChromeBar") is not null;
     }
 
     private void MinimizeWindowClick(object sender, RoutedEventArgs e)

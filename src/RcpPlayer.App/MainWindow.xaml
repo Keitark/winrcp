@@ -13,10 +13,11 @@
         MinWidth="600"
         MinHeight="465"
         WindowStyle="None"
+        AllowsTransparency="True"
         ResizeMode="CanResize"
         Loaded="WindowLoaded"
         Closing="WindowClosing"
-        Background="#D8CCAA"
+        Background="Transparent"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <shell:WindowChrome.WindowChrome>
@@ -275,10 +276,7 @@
                     BorderThickness="0"
                     BorderBrush="Transparent">
                 <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#D8CCAA" Offset="0"/>
-                        <GradientStop Color="#C4AF7F" Offset="1"/>
-                    </LinearGradientBrush>
+                    <SolidColorBrush Color="#00000000"/>
                 </Border.Background>
                 <Grid Margin="0">
                 <Grid.RowDefinitions>

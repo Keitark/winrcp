@@ -46,8 +46,8 @@ public partial class MainWindow : Window
     private const double LcdCommentScrollTickMs = 220.0;
     private const double LcdCommentScrollStepPerChar = 0.25;
     private const double LcdCommentGapPerChar = 0.3;
-    private const double CompactMinWindowHeight = 250.0;
-    private const double CompactShellBottomInset = 8.0;
+    private const double CompactMinWindowHeight = 0.0;
+    private const double CompactShellBottomInset = 0.0;
     private const double ShellSlideOffset = 26.0;
     private static readonly TimeSpan LcdTitleScrollStartDelay = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan LcdTitleScrollStepInterval = TimeSpan.FromMilliseconds(220);
@@ -928,7 +928,7 @@ public partial class MainWindow : Window
 
     private void AnimateWindowHeight(double targetHeight, bool animated)
     {
-        MinHeight = _isCompactShell ? CompactMinWindowHeight : 465.0;
+        MinHeight = _isCompactShell ? 1.0 : 465.0;
         if (!animated)
         {
             Height = targetHeight;

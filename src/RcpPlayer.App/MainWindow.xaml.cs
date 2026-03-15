@@ -861,6 +861,10 @@ public partial class MainWindow : Window
         var showLowerPanels = !_isCompactShell;
         var showProgressPanel = true;
 
+        CommandPanelRow.Height = showLowerPanels ? GridLength.Auto : new GridLength(0);
+        MainTabsRow.Height = showLowerPanels ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        ProgressPanelRow.Height = showProgressPanel ? GridLength.Auto : new GridLength(0);
+
         AnimateShellPanel(CommandPanel, CommandPanelTransform, showLowerPanels, animated, ShellSlideOffset);
         AnimateShellPanel(MainTabsHost, MainTabsHostTransform, showLowerPanels, animated, ShellSlideOffset * 1.2);
         AnimateShellPanel(ProgressPanel, ProgressPanelTransform, showProgressPanel, animated, ShellSlideOffset * 0.85);
